@@ -1,0 +1,1636 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>SimulaSharp.Kernel</name>
+    </assembly>
+    <members>
+        <member name="T:SimulaSharp.Kernel.Attributes.ConfigAttribute">
+            <summary>
+            Marks a public field or property to be populated from this instance's
+            <c>Config</c> block in the assembly YAML. The source generator collects every
+            <see cref="T:SimulaSharp.Kernel.Attributes.ConfigAttribute"/>-marked member so the framework can bind (and
+            validate) the weakly-typed YAML values into strongly-typed members before
+            <c>Configure()</c> runs.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.ConfigAttribute.#ctor(System.String)">
+            <summary>
+            Marks a public field or property to be populated from this instance's
+            <c>Config</c> block in the assembly YAML. The source generator collects every
+            <see cref="T:SimulaSharp.Kernel.Attributes.ConfigAttribute"/>-marked member so the framework can bind (and
+            validate) the weakly-typed YAML values into strongly-typed members before
+            <c>Configure()</c> runs.
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.ConfigAttribute.Key">
+            <summary>
+            The config key to read from the assembly. Defaults to the member's own name
+            when not given.
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.ConfigAttribute.Required">
+            <summary>
+            Whether the assembly must supply a value. When true, a missing key is an
+            error; when false, the member keeps its existing/default value. Defaults to true.
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.KnobAttribute">
+            <summary>
+            Base for attributes that decorate model members to be exposed as knobs in the UI.
+            The source generator materializes the UI binding (and, for read/write knobs, the
+            two-way sync) for each decorated member.
+            </summary>
+            <param name="label">The knob label.</param>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.KnobAttribute.#ctor(System.String)">
+            <summary>
+            Base for attributes that decorate model members to be exposed as knobs in the UI.
+            The source generator materializes the UI binding (and, for read/write knobs, the
+            two-way sync) for each decorated member.
+            </summary>
+            <param name="label">The knob label.</param>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.KnobAttribute.Label">
+            <summary>The label shown for the knob in the UI.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.KnobAttribute.IsReadOnly">
+            <summary>
+            When true the knob is display-only (RO — a label/indicator); when false it is
+            read/write (RW — the operator, as well as the model, can drive it).
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.TextKnobAttribute">
+            <summary>
+            Represents a text-based knob UI element, allowing customization of properties such as
+            whether empty values, new lines, or a specific maximum text length are permitted.
+            </summary>
+            <param name="label">The label displayed for the text knob in the UI.</param>
+            <remarks>
+            In ReadOnly mode, it's just a label.
+            In Read/Write mode, it's a text input field that, depending on the <see cref="P:SimulaSharp.Kernel.Attributes.TextKnobAttribute.AllowNewLine"/> property, may appear as a text area.
+            </remarks>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.TextKnobAttribute.#ctor(System.String)">
+            <summary>
+            Represents a text-based knob UI element, allowing customization of properties such as
+            whether empty values, new lines, or a specific maximum text length are permitted.
+            </summary>
+            <param name="label">The label displayed for the text knob in the UI.</param>
+            <remarks>
+            In ReadOnly mode, it's just a label.
+            In Read/Write mode, it's a text input field that, depending on the <see cref="P:SimulaSharp.Kernel.Attributes.TextKnobAttribute.AllowNewLine"/> property, may appear as a text area.
+            </remarks>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.TextKnobAttribute.AllowEmpty">
+            <summary>Whether an empty value is permitted (RW).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.TextKnobAttribute.AllowNewLine">
+            <summary>Whether newlines are permitted; when true the input renders as a text area (RW).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.TextKnobAttribute.MaxLength">
+            <summary>Maximum permitted text length.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.TickBoxKnobAttribute">
+            <summary>
+            Represents a UI element as a tick box knob, allowing users to toggle a boolean value.
+            </summary>
+            <param name="label">The label displayed for the tick box in the UI.</param>
+            <remarks>
+            In ReadOnly mode, it's just a light indicator.
+            In Read/Write mode, it's a proper checkbox that can be toggled by both the user and the model.
+            </remarks>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.TickBoxKnobAttribute.#ctor(System.String)">
+            <summary>
+            Represents a UI element as a tick box knob, allowing users to toggle a boolean value.
+            </summary>
+            <param name="label">The label displayed for the tick box in the UI.</param>
+            <remarks>
+            In ReadOnly mode, it's just a light indicator.
+            In Read/Write mode, it's a proper checkbox that can be toggled by both the user and the model.
+            </remarks>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.TriggerKnobAttribute">
+            <summary>
+            Represents a trigger-type knob UI element, intended for executing actions or methods
+            within a model when interacted with in the UI. Trigger knobs wrap the actual method within code
+            responsible for executing the method when triggered, as well as informing UI that the method has been triggered,
+            when this happens from the model side.
+            </summary>
+            <param name="label">The label displayed for the trigger in the UI.</param>
+            <remarks>
+            This attribute is used to decorate methods that should be exposed as actionable triggers,
+            typically represented as light-bearing button in RW mode (lights up when triggered regardless of the caller)
+            and as a plain light indicator in RO mode.
+            </remarks>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.TriggerKnobAttribute.#ctor(System.String)">
+            <summary>
+            Represents a trigger-type knob UI element, intended for executing actions or methods
+            within a model when interacted with in the UI. Trigger knobs wrap the actual method within code
+            responsible for executing the method when triggered, as well as informing UI that the method has been triggered,
+            when this happens from the model side.
+            </summary>
+            <param name="label">The label displayed for the trigger in the UI.</param>
+            <remarks>
+            This attribute is used to decorate methods that should be exposed as actionable triggers,
+            typically represented as light-bearing button in RW mode (lights up when triggered regardless of the caller)
+            and as a plain light indicator in RO mode.
+            </remarks>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.NumberKnobType">
+            <summary>How a numeric knob is presented in the UI.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Attributes.NumberKnobType.Input">
+            <summary>A plain numeric input field.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Attributes.NumberKnobType.Slider">
+            <summary>A linear slider between the knob's min and max.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Attributes.NumberKnobType.Rotary">
+            <summary>A rotary dial between the knob's min and max.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.IntegerKnobAttribute">
+            <summary>
+            Decorates model members that represent integer values to be exposed as knobs in the UI.
+            </summary>
+            <param name="label">The knob label.</param>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.IntegerKnobAttribute.#ctor(System.String)">
+            <summary>
+            Decorates model members that represent integer values to be exposed as knobs in the UI.
+            </summary>
+            <param name="label">The knob label.</param>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.IntegerKnobAttribute.KnobType">
+            <summary>How the knob is presented.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.IntegerKnobAttribute.Min">
+            <summary>Minimum permitted value.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.IntegerKnobAttribute.Max">
+            <summary>Maximum permitted value.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.FloatKnobAttribute">
+            <summary>
+            Decorates model members to be represented as floating-point knobs in the UI.
+            Supports options for input precision, range, and decimal formatting.
+            </summary>
+            <param name="label">The label for the knob.</param>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.FloatKnobAttribute.#ctor(System.String)">
+            <summary>
+            Decorates model members to be represented as floating-point knobs in the UI.
+            Supports options for input precision, range, and decimal formatting.
+            </summary>
+            <param name="label">The label for the knob.</param>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.FloatKnobAttribute.KnobType">
+            <summary>How the knob is presented.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.FloatKnobAttribute.Min">
+            <summary>Minimum permitted value.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.FloatKnobAttribute.Max">
+            <summary>Maximum permitted value.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.FloatKnobAttribute.DecimalPlaces">
+            <summary>Number of decimal places shown/accepted.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.PlottableAttribute">
+            <summary>
+            Marks a model's numeric member as a plot-telemetry point. The source generator
+            collects every decorated member into the simulator's <c>Plottables</c> map (keyed by
+            full dotted instance path), where a plot consumer (the MMI) discovers and samples it.
+            <para>
+            Apply it to a <c>partial</c> property so the generated getter is a volatile read
+            (sampling is a lock-free poll). A property may carry both a knob attribute and
+            <see cref="T:SimulaSharp.Kernel.Attributes.PlottableAttribute"/> at once — they share the single volatile backing
+            field; the knob drives observation/control while the plottable feeds graphs.
+            </para>
+            <para>
+            Supported member types: any numeric (<c>int/long/float/double/…</c>), <c>bool</c>
+            (projected to 1.0/0.0), and enums (read as their underlying numeric).
+            </para>
+            </summary>
+            <param name="label">Display label for the plotted series.</param>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.PlottableAttribute.#ctor(System.String)">
+            <summary>
+            Marks a model's numeric member as a plot-telemetry point. The source generator
+            collects every decorated member into the simulator's <c>Plottables</c> map (keyed by
+            full dotted instance path), where a plot consumer (the MMI) discovers and samples it.
+            <para>
+            Apply it to a <c>partial</c> property so the generated getter is a volatile read
+            (sampling is a lock-free poll). A property may carry both a knob attribute and
+            <see cref="T:SimulaSharp.Kernel.Attributes.PlottableAttribute"/> at once — they share the single volatile backing
+            field; the knob drives observation/control while the plottable feeds graphs.
+            </para>
+            <para>
+            Supported member types: any numeric (<c>int/long/float/double/…</c>), <c>bool</c>
+            (projected to 1.0/0.0), and enums (read as their underlying numeric).
+            </para>
+            </summary>
+            <param name="label">Display label for the plotted series.</param>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.PlottableAttribute.Label">
+            <summary>Display label for the plotted series.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.PlottableAttribute.Unit">
+            <summary>Optional unit for the plot axis (e.g. <c>"V"</c>, <c>"mA"</c>); null if unitless.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.ServiceEventAttribute">
+            <summary>
+            Declares a named <b>publish point</b> on a service (a pub/sub channel from the
+            service out to models). Applied at class level and repeatable — a service may
+            expose many events. The service never writes any code for it; the source
+            generator owns both sides.
+            <para>
+            For <c>[ServiceEvent("SomeValueUpdated", typeof(int))]</c> the generator emits:
+            <list type="bullet">
+              <item><c>protected void Trigger_SomeValueUpdated(int value)</c> — the service
+              calls this internally to publish an update.</item>
+              <item><c>public void Register_SomeValueUpdated(IScheduler scheduler, Action&lt;int&gt; callback)</c>
+              — a model calls this to subscribe. The subscriber passes its own scheduler so
+              the service can deliver the callback onto the subscriber's site cross-thread.</item>
+            </list>
+            A payload-less event (<see cref="P:SimulaSharp.Kernel.Attributes.ServiceEventAttribute.ArgType"/> null) generates the argument-free forms.
+            </para>
+            <para>
+            Events are always <b>fire-and-forget</b> — they carry no result. A result would
+            force synchronous cross-thread execution, which the design does not support; if a
+            model needs to send something back, it posts to a separate <c>[ServiceRequest]</c>.
+            </para>
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.ServiceEventAttribute.#ctor(System.String,System.Type)">
+            <summary>
+            Declares a named <b>publish point</b> on a service (a pub/sub channel from the
+            service out to models). Applied at class level and repeatable — a service may
+            expose many events. The service never writes any code for it; the source
+            generator owns both sides.
+            <para>
+            For <c>[ServiceEvent("SomeValueUpdated", typeof(int))]</c> the generator emits:
+            <list type="bullet">
+              <item><c>protected void Trigger_SomeValueUpdated(int value)</c> — the service
+              calls this internally to publish an update.</item>
+              <item><c>public void Register_SomeValueUpdated(IScheduler scheduler, Action&lt;int&gt; callback)</c>
+              — a model calls this to subscribe. The subscriber passes its own scheduler so
+              the service can deliver the callback onto the subscriber's site cross-thread.</item>
+            </list>
+            A payload-less event (<see cref="P:SimulaSharp.Kernel.Attributes.ServiceEventAttribute.ArgType"/> null) generates the argument-free forms.
+            </para>
+            <para>
+            Events are always <b>fire-and-forget</b> — they carry no result. A result would
+            force synchronous cross-thread execution, which the design does not support; if a
+            model needs to send something back, it posts to a separate <c>[ServiceRequest]</c>.
+            </para>
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.ServiceEventAttribute.Name">
+            <summary>The event name; used to name the generated <c>Trigger_</c>/<c>Register_</c> members.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.ServiceEventAttribute.ArgType">
+            <summary>The single payload type, or null for a payload-less event.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.ServiceRefAttribute">
+            <summary>
+            Marks a public field or property (of a service type) as a <b>service dependency</b>.
+            The assembly's <c>Deps</c> block binds it by service name: the generated simulator
+            sets the member to the named service instance during assembly, so the model can call
+            the service's generated interaction surface (<c>RegisterCallback_</c> / request
+            callers). The member must be settable.
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.ServiceRequestAttribute">
+             <summary>
+             Marks a service method as a named <b>entry point</b> (a request/response channel
+             from models into the service). The decorated handler is written by the service
+             author and must be named <c>Handle_&lt;RequestName&gt;</c>; the source generator
+             derives the request name by stripping the <c>Handle_</c> prefix (unless
+             <see cref="P:SimulaSharp.Kernel.Attributes.ServiceRequestAttribute.Name"/> overrides it) and emits the public cross-thread caller that
+             models use.
+             <para>
+             The handler may take at most one argument and may return a result. The generated
+             caller marshals the call onto the service's own site (scheduler) and, when the
+             handler returns a value, exposes it as an awaitable result.
+             </para>
+             <example>
+             <code>
+             [ServiceRequest]                              // request "TriggerSomething"
+             protected void Handle_TriggerSomething() { }
+            
+             [ServiceRequest]                              // request "UpdateAValue"
+             protected void Handle_UpdateAValue(int val) { }
+             </code>
+             </example>
+             </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.ServiceRequestAttribute.#ctor(System.String)">
+             <summary>
+             Marks a service method as a named <b>entry point</b> (a request/response channel
+             from models into the service). The decorated handler is written by the service
+             author and must be named <c>Handle_&lt;RequestName&gt;</c>; the source generator
+             derives the request name by stripping the <c>Handle_</c> prefix (unless
+             <see cref="P:SimulaSharp.Kernel.Attributes.ServiceRequestAttribute.Name"/> overrides it) and emits the public cross-thread caller that
+             models use.
+             <para>
+             The handler may take at most one argument and may return a result. The generated
+             caller marshals the call onto the service's own site (scheduler) and, when the
+             handler returns a value, exposes it as an awaitable result.
+             </para>
+             <example>
+             <code>
+             [ServiceRequest]                              // request "TriggerSomething"
+             protected void Handle_TriggerSomething() { }
+            
+             [ServiceRequest]                              // request "UpdateAValue"
+             protected void Handle_UpdateAValue(int val) { }
+             </code>
+             </example>
+             </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.ServiceRequestAttribute.Name">
+            <summary>
+            Optional explicit request name. When null, the generator infers it from the
+            handler method name by stripping the <c>Handle_</c> prefix.
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Knobs.IKnobChannel">
+            <summary>
+            The MMI-implemented sink for knob observability and control (registered on the
+            simulator, like <c>ILogSink</c>). On registration the simulator hands it the
+            discovered knobs, then pushes a notification whenever any knob's value changes.
+            <para>
+            Both callbacks run on a model's <b>site thread</b>, so implementations must be
+            non-blocking — enqueue and return. The MMI reads and writes values through the
+            <see cref="T:SimulaSharp.Kernel.Knobs.Knob"/> objects it receives (<see cref="M:SimulaSharp.Kernel.Knobs.Knob.Read"/> / <see cref="M:SimulaSharp.Kernel.Knobs.Knob.Write(System.Object)"/>).
+            </para>
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Knobs.IKnobChannel.OnKnobsDiscovered(System.Collections.Generic.IReadOnlyList{SimulaSharp.Kernel.Knobs.Knob})">
+            <summary>
+            Delivers the simulation's knobs. Called once per channel — at registration if
+            discovery has already happened, otherwise when it does.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Knobs.IKnobChannel.OnKnobChanged(SimulaSharp.Kernel.Knobs.Knob)">
+            <summary>Called when a knob's value changes, on the owning model's site thread.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Knobs.IKnobProvider">
+            <summary>
+            Implemented (explicitly, by the source generator) by models that declare knob
+            members. The generated simulator calls <see cref="M:SimulaSharp.Kernel.Knobs.IKnobProvider.CollectKnobs(System.String,System.Collections.Generic.ICollection{SimulaSharp.Kernel.Knobs.Knob})"/> during discovery,
+            passing the model's full dotted path, so the model can build its <see cref="T:SimulaSharp.Kernel.Knobs.Knob"/>
+            binders (stamped with that path) and add them to the simulator's cached list.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Knobs.IKnobProvider.CollectKnobs(System.String,System.Collections.Generic.ICollection{SimulaSharp.Kernel.Knobs.Knob})">
+            <summary>Builds this model's knobs (paths prefixed with <paramref name="pathPrefix"/>) into <paramref name="into"/>.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Knobs.Knob">
+            <summary>
+            A single observable/controllable knob on a model instance — the MMI's unit of
+            observation and control. It is a thin binder: metadata (for rendering) plus typed
+            read/write delegates the source generator supplies, and a <see cref="E:SimulaSharp.Kernel.Knobs.Knob.Changed"/>
+            notification.
+            <para>
+            Access is lock-free: the generated delegates do a typed <c>Volatile.Read</c> /
+            <c>Volatile.Write</c> on the model's backing field (a plain set is atomic on 64-bit),
+            so any thread can read the current value and write a new one. The model's own typed
+            property uses the field directly (no boxing); only the MMI path boxes.
+            </para>
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.Path">
+            <summary>Full dotted instance path plus knob name, e.g. <c>SimName.Path.To.Model.Speed</c>.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.Label">
+            <summary>Display label.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.Kind">
+            <summary>Broad category (drives rendering).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.IsReadOnly">
+            <summary>True for a display-only knob (the model drives it; the MMI cannot write).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.ValueType">
+            <summary>The value's CLR type name (e.g. <c>System.Int32</c>); null for triggers.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.Min">
+            <summary>Minimum for a numeric knob, if bounded.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.Max">
+            <summary>Maximum for a numeric knob, if bounded.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.DecimalPlaces">
+            <summary>Decimal places for a float knob.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.Style">
+            <summary>Rendering style for a numeric knob (Input/Slider/Rotary).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.MaxLength">
+            <summary>Maximum text length for a text knob.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.AllowEmpty">
+            <summary>Whether a text knob permits empty values.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.AllowNewLine">
+            <summary>Whether a text knob permits newlines.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.ReadBoxed">
+            <summary>Typed volatile read of the value, boxed. Null for triggers.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.WriteBoxed">
+            <summary>Typed volatile write of the value (unboxed inside). Null for read-only knobs and triggers.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.Invoke">
+            <summary>Invokes a trigger knob (posts the method onto the model's site). Null for value knobs.</summary>
+        </member>
+        <member name="E:SimulaSharp.Kernel.Knobs.Knob.Changed">
+            <summary>Raised whenever the value changes (from either the model or a write).</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Knobs.Knob.Trigger">
+            <summary>Fires a trigger knob (posts the wrapped method onto the model's site). No-op for value knobs.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Knobs.Knob.Read">
+            <summary>Reads the current value (boxed).</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Knobs.Knob.Write(System.Object)">
+            <summary>
+            Writes a new value (no-op for read-only). The generated <see cref="P:SimulaSharp.Kernel.Knobs.Knob.WriteBoxed"/> does the
+            atomic volatile write and posts the change-notification onto the model's site, so any
+            model subscribed to <see cref="E:SimulaSharp.Kernel.Knobs.Knob.Changed"/> runs on its own thread.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Knobs.Knob.RaiseChanged">
+            <summary>Raises <see cref="E:SimulaSharp.Kernel.Knobs.Knob.Changed"/>. Called by the generated model setter and by <see cref="M:SimulaSharp.Kernel.Knobs.Knob.Write(System.Object)"/>.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Knobs.KnobKind">
+            <summary>The broad category of a <see cref="T:SimulaSharp.Kernel.Knobs.Knob"/>, telling the MMI how to render it.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Knobs.KnobKind.Bool">
+            <summary>A boolean toggle (tick box).</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Knobs.KnobKind.Number">
+            <summary>A numeric value (int/long/float/double); see the knob's metadata for range/style.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Knobs.KnobKind.Text">
+            <summary>A text value.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Knobs.KnobKind.Trigger">
+            <summary>A method trigger (no value).</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Logging.ComponentLogger">
+            <summary>
+            The Kernel's default <see cref="T:SimulaSharp.Kernel.Logging.ILogger"/>: scopes logging to one issuer and one
+            clock, stamps each message with a consistent time snapshot plus the wall clock,
+            and forwards the resulting <see cref="T:SimulaSharp.Kernel.Logging.LogEntry"/> to an <see cref="T:SimulaSharp.Kernel.Logging.ILogSink"/>
+            (the MMI's async queue). One instance is created per model/service.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.ComponentLogger.#ctor(System.String,SimulaSharp.Kernel.Services.IClock,SimulaSharp.Kernel.Logging.ILogSink)">
+            <summary>
+            The Kernel's default <see cref="T:SimulaSharp.Kernel.Logging.ILogger"/>: scopes logging to one issuer and one
+            clock, stamps each message with a consistent time snapshot plus the wall clock,
+            and forwards the resulting <see cref="T:SimulaSharp.Kernel.Logging.LogEntry"/> to an <see cref="T:SimulaSharp.Kernel.Logging.ILogSink"/>
+            (the MMI's async queue). One instance is created per model/service.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.ComponentLogger.Log(SimulaSharp.Kernel.Logging.LogLevel,System.String,System.String,System.String,System.Int32)">
+            <inheritdoc/>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Logging.ILogger">
+            <summary>
+            A component-scoped logging facade. An instance is bound to a single issuer and
+            clock, so callers just supply a level and message — the issuer, the three
+            timestamps, and the call site are filled in automatically. The convenience
+            methods are default implementations, so a custom logger only needs
+            <see cref="M:SimulaSharp.Kernel.Logging.ILogger.Log(SimulaSharp.Kernel.Logging.LogLevel,System.String,System.String,System.String,System.Int32)"/>.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.ILogger.Log(SimulaSharp.Kernel.Logging.LogLevel,System.String,System.String,System.String,System.Int32)">
+            <summary>
+            Records a message at <paramref name="level"/>. Call-site parameters are
+            captured by the compiler; do not pass them explicitly.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.ILogger.LogError(System.String,System.String,System.String,System.Int32)">
+            <summary>Logs at <see cref="F:SimulaSharp.Kernel.Logging.LogLevel.Error"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.ILogger.LogWarning(System.String,System.String,System.String,System.Int32)">
+            <summary>Logs at <see cref="F:SimulaSharp.Kernel.Logging.LogLevel.Warning"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.ILogger.LogEvent(System.String,System.String,System.String,System.Int32)">
+            <summary>Logs at <see cref="F:SimulaSharp.Kernel.Logging.LogLevel.Event"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.ILogger.LogInformation(System.String,System.String,System.String,System.Int32)">
+            <summary>Logs at <see cref="F:SimulaSharp.Kernel.Logging.LogLevel.Information"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.ILogger.LogDebug(System.String,System.String,System.String,System.Int32)">
+            <summary>Logs at <see cref="F:SimulaSharp.Kernel.Logging.LogLevel.Debug"/> (trace level 0).</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.ILogger.LogTrace(System.Int32,System.String,System.String,System.String,System.Int32)">
+            <summary>
+            Logs at trace <paramref name="depth"/> 1..6 (<see cref="F:SimulaSharp.Kernel.Logging.LogLevel.Trace1"/>..<see cref="F:SimulaSharp.Kernel.Logging.LogLevel.Trace6"/>).
+            For trace 0, use <see cref="M:SimulaSharp.Kernel.Logging.ILogger.LogDebug(System.String,System.String,System.String,System.Int32)"/>.
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Logging.ILogSink">
+            <summary>
+            Destination for structured log records. The MMI implements this as an
+            asynchronous queue; the Kernel only produces <see cref="T:SimulaSharp.Kernel.Logging.LogEntry"/> values and
+            hands them off. Implementations must be thread-safe: <see cref="M:SimulaSharp.Kernel.Logging.ILogSink.Submit(SimulaSharp.Kernel.Logging.LogEntry@)"/> is
+            called concurrently from every SimSite thread.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.ILogSink.Submit(SimulaSharp.Kernel.Logging.LogEntry@)">
+            <summary>
+            Accepts a fully-formed log entry. Must not block the caller — enqueue and
+            return. Passed by <c>in</c> to avoid copying the record struct.
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Logging.LogEntry">
+            <summary>
+            A structured log record. Timestamps are captured together so they are mutually
+            consistent: <see cref="P:SimulaSharp.Kernel.Logging.LogEntry.SimTimeUs"/> and <see cref="P:SimulaSharp.Kernel.Logging.LogEntry.MissionTimeUs"/> come from a
+            single clock snapshot, and <see cref="P:SimulaSharp.Kernel.Logging.LogEntry.WallTimeUtc"/> is the real-world clock at
+            the moment of logging.
+            </summary>
+            <param name="SimTimeUs">Elapsed simulation time in microseconds.</param>
+            <param name="MissionTimeUs">Absolute mission time in microseconds.</param>
+            <param name="WallTimeUtc">Real-world UTC time when the entry was created.</param>
+            <param name="Issuer">Identity of the component that logged the entry.</param>
+            <param name="Level">Severity.</param>
+            <param name="Message">The log message.</param>
+            <param name="Member">Calling member name (auto-captured).</param>
+            <param name="File">Calling source file path (auto-captured).</param>
+            <param name="Line">Calling source line number (auto-captured).</param>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.LogEntry.#ctor(System.Int64,System.Int64,System.DateTime,System.String,SimulaSharp.Kernel.Logging.LogLevel,System.String,System.String,System.String,System.Int32)">
+            <summary>
+            A structured log record. Timestamps are captured together so they are mutually
+            consistent: <see cref="P:SimulaSharp.Kernel.Logging.LogEntry.SimTimeUs"/> and <see cref="P:SimulaSharp.Kernel.Logging.LogEntry.MissionTimeUs"/> come from a
+            single clock snapshot, and <see cref="P:SimulaSharp.Kernel.Logging.LogEntry.WallTimeUtc"/> is the real-world clock at
+            the moment of logging.
+            </summary>
+            <param name="SimTimeUs">Elapsed simulation time in microseconds.</param>
+            <param name="MissionTimeUs">Absolute mission time in microseconds.</param>
+            <param name="WallTimeUtc">Real-world UTC time when the entry was created.</param>
+            <param name="Issuer">Identity of the component that logged the entry.</param>
+            <param name="Level">Severity.</param>
+            <param name="Message">The log message.</param>
+            <param name="Member">Calling member name (auto-captured).</param>
+            <param name="File">Calling source file path (auto-captured).</param>
+            <param name="Line">Calling source line number (auto-captured).</param>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Logging.LogEntry.SimTimeUs">
+            <summary>Elapsed simulation time in microseconds.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Logging.LogEntry.MissionTimeUs">
+            <summary>Absolute mission time in microseconds.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Logging.LogEntry.WallTimeUtc">
+            <summary>Real-world UTC time when the entry was created.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Logging.LogEntry.Issuer">
+            <summary>Identity of the component that logged the entry.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Logging.LogEntry.Level">
+            <summary>Severity.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Logging.LogEntry.Message">
+            <summary>The log message.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Logging.LogEntry.Member">
+            <summary>Calling member name (auto-captured).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Logging.LogEntry.File">
+            <summary>Calling source file path (auto-captured).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Logging.LogEntry.Line">
+            <summary>Calling source line number (auto-captured).</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Logging.LogLevel">
+            <summary>
+            Severity of a <see cref="T:SimulaSharp.Kernel.Logging.LogEntry"/>, declared most-important first. The trace
+            family is a depth scale: <see cref="F:SimulaSharp.Kernel.Logging.LogLevel.Debug"/> is trace 0, then
+            <see cref="F:SimulaSharp.Kernel.Logging.LogLevel.Trace1"/>..<see cref="F:SimulaSharp.Kernel.Logging.LogLevel.Trace6"/> go progressively more verbose.
+            Three-letter display codes are available via <see cref="M:SimulaSharp.Kernel.Logging.LogLevelExtensions.ToCode(SimulaSharp.Kernel.Logging.LogLevel)"/>.
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Logging.LogLevel.Error">
+            <summary>ERR — a failure.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Logging.LogLevel.Warning">
+            <summary>WRN — something suspect but non-fatal.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Logging.LogLevel.Event">
+            <summary>EVT — a notable simulation event.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Logging.LogLevel.Information">
+            <summary>INF — general information.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Logging.LogLevel.Debug">
+            <summary>DBG — debug detail; conceptually trace level 0.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Logging.LogLevel.Trace1">
+            <summary>TR1 — trace level 1.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Logging.LogLevel.Trace2">
+            <summary>TR2 — trace level 2.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Logging.LogLevel.Trace3">
+            <summary>TR3 — trace level 3.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Logging.LogLevel.Trace4">
+            <summary>TR4 — trace level 4.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Logging.LogLevel.Trace5">
+            <summary>TR5 — trace level 5.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Logging.LogLevel.Trace6">
+            <summary>TR6 — trace level 6.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Logging.LogLevelExtensions">
+            <summary>Helpers for <see cref="T:SimulaSharp.Kernel.Logging.LogLevel"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.LogLevelExtensions.ToCode(SimulaSharp.Kernel.Logging.LogLevel)">
+            <summary>The canonical three-letter display code for a level (e.g. <c>ERR</c>, <c>TR3</c>).</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Logging.LogRouter">
+            <summary>
+            A composite <see cref="T:SimulaSharp.Kernel.Logging.ILogSink"/> that owns the real sinks and fans each entry out
+            to all of them. A simulation holds one router (created at construction); registering
+            a sink <see cref="M:SimulaSharp.Kernel.Logging.LogRouter.Add(SimulaSharp.Kernel.Logging.ILogSink)"/>s it here, and every component logger forwards to this single
+            router — so one registration reaches all logs. The sink list is copy-on-write:
+            fan-out reads are lock-free, registration is locked, and <see cref="M:SimulaSharp.Kernel.Logging.LogRouter.Add(SimulaSharp.Kernel.Logging.ILogSink)"/> is safe
+            from any thread at any time (including while the simulation runs).
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.LogRouter.Add(SimulaSharp.Kernel.Logging.ILogSink)">
+            <summary>Registers a sink. Safe to call at any time, from any thread.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Logging.LogRouter.Submit(SimulaSharp.Kernel.Logging.LogEntry@)">
+            <inheritdoc/>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Model.IModel">
+            <summary>
+            A simulation model — a simulated entity with state and behaviour. The framework
+            injects the clock, scheduler and logger as construction arguments, and every
+            generated <c>&lt;Model&gt;Ref</c> wraps an <see cref="T:SimulaSharp.Kernel.Model.IModel"/>. A model's whole
+            containment subtree shares one <see cref="P:SimulaSharp.Kernel.Model.IModel.Scheduler"/>. Deinitialization happens
+            in <see cref="M:System.IDisposable.Dispose"/>.
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.IModel.TimeKeeper">
+            <summary>The shared simulation clock (construction argument).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.IModel.Scheduler">
+            <summary>The SimSite this model and its containment subtree run on (construction argument).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.IModel.Logger">
+            <summary>This model's component-scoped logger (construction argument).</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Model.IModel.Configure">
+            <summary>
+            Called by the framework after construction, assembly wiring and config filling
+            are complete. Here the model registers its own long-running events on the
+            scheduler (if any), precomputes values and does other setup work.
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Model.IModelRef">
+            <summary>
+            Marker implemented by every generated <c>&lt;Model&gt;Ref</c> class. Lets
+            <see cref="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1"/> constrain its element to a Ref, and
+            lets the source generator tell a reference (<c>Reference&lt;IModel&gt;</c>) apart
+            from a reference accessor (<c>ReferenceAccessor&lt;IModelRef&gt;</c>).
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Model.IReferenceWiring">
+            <summary>
+            Implemented (explicitly, by the source generator) by models that declare
+            <see cref="T:SimulaSharp.Kernel.Primitives.Reference`1"/> members. The generated simulator calls
+            <see cref="M:SimulaSharp.Kernel.Model.IReferenceWiring.WireReferences"/> after it has populated every model's reference
+            collections, so each model can build its <see cref="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1"/>
+            backings over the now-complete set of targets. It is implemented explicitly, so it
+            does not appear on the model's public surface.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Model.IReferenceWiring.WireReferences">
+            <summary>Builds this model's reference accessors from its populated reference collections.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Model.IService">
+            <summary>
+            A simulation service — a reusable capability that models depend on. A service runs
+            on its <b>own</b> SimSite (created behind the scenes by the abstract service base
+            from the clock), so every model↔service call is cross-thread. The framework injects
+            the clock and logger as construction arguments. Deinitialization happens in
+            <see cref="M:System.IDisposable.Dispose"/>.
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.IService.TimeKeeper">
+            <summary>The shared simulation clock (construction argument).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.IService.Logger">
+            <summary>This service's component-scoped logger (construction argument).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.IService.Scheduler">
+            <summary>
+            The service's own SimSite, created behind the scenes by the abstract service
+            base with the clock as its time source. Every call into the service is
+            marshalled onto this site.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Model.IService.Configure">
+            <summary>
+            Called by the framework after construction, assembly wiring and config filling
+            are complete. Here the service registers its own long-running events on the
+            scheduler (if any), precomputes values and does other setup work.
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Model.ModelBase">
+            <summary>
+            Base class for simulation models. Holds the construction arguments the framework
+            injects (clock, scheduler, logger) and provides the <see cref="M:SimulaSharp.Kernel.Model.ModelBase.Configure"/> and
+            <see cref="M:SimulaSharp.Kernel.Model.ModelBase.Dispose"/> hooks. A model's whole containment subtree shares one
+            <see cref="P:SimulaSharp.Kernel.Model.ModelBase.Scheduler"/> (SimSite): the generated simulator constructs every model
+            in the subtree with that shared scheduler, so there is nothing to propagate here.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Model.ModelBase.#ctor(SimulaSharp.Kernel.Services.IClock,SimulaSharp.Kernel.Services.IScheduler,SimulaSharp.Kernel.Logging.ILogger)">
+            <param name="timeKeeper">The shared simulation clock.</param>
+            <param name="scheduler">The SimSite this model (and its subtree) runs on.</param>
+            <param name="logger">This model's component-scoped logger.</param>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.ModelBase.TimeKeeper">
+            <inheritdoc/>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.ModelBase.Scheduler">
+            <inheritdoc/>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.ModelBase.Logger">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Model.ModelBase.Configure">
+            <summary>
+            Called by the framework after construction, assembly and config are complete.
+            Override to register long-running events on the scheduler, precompute values,
+            or do other setup. The default does nothing.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Model.ModelBase.Dispose">
+            <summary>
+            Deinitialization hook. Override to release resources; the default does nothing.
+            Called during the simulation's teardown after the site threads have stopped.
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Model.ServiceBase">
+            <summary>
+            Base class for simulation services. Unlike a model, a service owns its <b>own</b>
+            SimSite (created here from the clock), so every model↔service call is cross-thread
+            and marshalled through that site's inbox. Holds the injected clock and logger and
+            provides the <see cref="M:SimulaSharp.Kernel.Model.ServiceBase.Configure"/>/<see cref="M:SimulaSharp.Kernel.Model.ServiceBase.Dispose"/> hooks.
+            <para>
+            The service does not start, stop or dispose its site — the simulator owns every
+            site's lifecycle and reaches this one via <see cref="P:SimulaSharp.Kernel.Model.ServiceBase.Site"/>. <see cref="M:SimulaSharp.Kernel.Model.ServiceBase.Dispose"/>
+            is deinit only (called after the site threads have been stopped).
+            </para>
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Model.ServiceBase.#ctor(SimulaSharp.Kernel.Services.IClock,SimulaSharp.Kernel.Logging.ILogger,System.String,System.Int32)">
+            <param name="timeKeeper">The shared simulation clock.</param>
+            <param name="logger">This service's component-scoped logger.</param>
+            <param name="name">Diagnostic name for the service's SimSite.</param>
+            <param name="maxEvents">Capacity of the service site's event queue.</param>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.ServiceBase.TimeKeeper">
+            <inheritdoc/>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.ServiceBase.Logger">
+            <inheritdoc/>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.ServiceBase.Scheduler">
+            <inheritdoc/>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Model.ServiceBase.Site">
+            <summary>The service's own SimSite. Framework access: the simulator starts/stops/disposes it.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Model.ServiceBase.Configure">
+            <summary>
+            Called by the framework after construction, assembly and config are complete.
+            Override to register long-running events on the scheduler or precompute values.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Model.ServiceBase.Dispose">
+            <summary>Deinitialization hook. Override to release resources; the site is disposed by the simulator.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Plotting.IPlottableProvider">
+            <summary>
+            Implemented (explicitly, by the source generator) by models that declare
+            <c>[Plottable]</c> members. The generated simulator calls
+            <see cref="M:SimulaSharp.Kernel.Plotting.IPlottableProvider.CollectPlottables(System.String,System.Collections.Generic.IDictionary{System.String,SimulaSharp.Kernel.Plotting.Plottable})"/> during discovery, passing the model's full dotted
+            path, so the model can build its <see cref="T:SimulaSharp.Kernel.Plotting.Plottable"/> binders (stamped with that
+            path) and add them to the simulator's map.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Plotting.IPlottableProvider.CollectPlottables(System.String,System.Collections.Generic.IDictionary{System.String,SimulaSharp.Kernel.Plotting.Plottable})">
+            <summary>Builds this model's plottables (paths prefixed with <paramref name="pathPrefix"/>) into <paramref name="into"/>, keyed by full path.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Plotting.Plottable">
+            <summary>
+            A single plot-telemetry point on a model instance — the plot consumer's unit of
+            observation. It is a thin binder: metadata (for axis rendering) plus a typed
+            <see cref="P:SimulaSharp.Kernel.Plotting.Plottable.Sample"/> delegate the source generator supplies.
+            <para>
+            <see cref="P:SimulaSharp.Kernel.Plotting.Plottable.Sample"/> does a lock-free volatile read of the model's backing field
+            (through the member's volatile getter) and projects it to <see cref="T:System.Double"/>. The
+            consumer stamps one mission time per sweep (see the simulator's sampling helper), so
+            every point in a frame shares a consistent x-axis.
+            </para>
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Plotting.Plottable.Path">
+            <summary>Full dotted instance path plus member name, e.g. <c>SimName.Path.To.Model.Vbus</c>. The map key.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Plotting.Plottable.Label">
+            <summary>Display label for the series.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Plotting.Plottable.Unit">
+            <summary>Unit for the axis (e.g. <c>V</c>, <c>mA</c>); null if unitless.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Plotting.Plottable.ValueType">
+            <summary>The source member's CLR type name (e.g. <c>System.Double</c>), before projection.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Plotting.Plottable.Sample">
+            <summary>Volatile read of the current value, projected to <see cref="T:System.Double"/>.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Primitives.Container`1">
+            <summary>
+            An <b>owning</b>, list-based association: the sub-models a parent model contains.
+            A contained model's subtree shares the parent's SimSite (assigned at construction
+            by the generated simulator), so this type carries no scheduling behaviour — it is
+            a typed, enumerable, tree-walkable collection that also signals "containment" to
+            the source generator (the type itself is the decoration; no attribute needed).
+            </summary>
+            <typeparam name="T">The contained model type.</typeparam>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Primitives.Container`1.Add(`0)">
+            <summary>Adds a child. Called by the generated simulator while building the model tree.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Primitives.Container`1.Item(System.Int32)">
+            <summary>The child at <paramref name="index"/>.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Primitives.Container`1.Count">
+            <summary>The number of contained children.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Primitives.Container`1.GetEnumerator">
+            <inheritdoc/>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Primitives.Reference`1">
+            <summary>
+            The public face of a <b>non-owning</b>, list-based association between models —
+            what the developer declares (e.g. <c>public Reference&lt;Tracker&gt; Trackers</c>).
+            It offers only <see cref="M:SimulaSharp.Kernel.Primitives.Reference`1.Add(`0)"/>, used by the generated simulator while wiring the
+            assembly; the developer never reads models out of it directly. Access goes through
+            the codegen-produced <see cref="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1"/> instead, which yields the
+            guarded <c>&lt;Model&gt;Ref</c> wrappers. The type itself is the "reference"
+            decoration (no attribute needed).
+            </summary>
+            <typeparam name="T">The referenced model type.</typeparam>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Primitives.Reference`1.Add(`0)">
+            <summary>Adds a referenced model. Called by the generated simulator during assembly wiring.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Primitives.Reference`1.Items">
+            <summary>Framework access to the referenced models (used to build the <see cref="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1"/>).</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1">
+            <summary>
+            The codegen-produced backing for a <see cref="T:SimulaSharp.Kernel.Primitives.Reference`1"/> — e.g. a
+            <c>protected ReferenceAccessor&lt;TrackerRef&gt; _Trackers</c> generated for a
+            developer's <c>Reference&lt;Tracker&gt; Trackers</c>. It offers only
+            access/enumeration over the guarded <c>&lt;Model&gt;Ref</c> wrappers; the model's
+            own code calls referenced models through these Refs (passing its own scheduler).
+            Built via <see cref="M:SimulaSharp.Kernel.Primitives.ReferenceAccessor.From``2(SimulaSharp.Kernel.Primitives.Reference{``0},System.Func{``0,``1})"/>.
+            </summary>
+            <typeparam name="T">The generated Ref type.</typeparam>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1.Item(System.Int32)">
+            <summary>The Ref at <paramref name="index"/>.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1.Count">
+            <summary>The number of referenced models.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1.GetEnumerator">
+            <inheritdoc/>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor">
+            <summary>Factory that links a <see cref="T:SimulaSharp.Kernel.Primitives.Reference`1"/> to its <see cref="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Primitives.ReferenceAccessor.From``2(SimulaSharp.Kernel.Primitives.Reference{``0},System.Func{``0,``1})">
+            <summary>
+            Wraps each model held by <paramref name="reference"/> in its Ref (via
+            <paramref name="wrap"/>, a generated <c>m =&gt; new FooRef(m)</c>) and returns the
+            access-only accessor. Called by the generated wiring after assembly completes.
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Primitives.SimYield">
+            <summary>
+            The value a coroutine (<see cref="T:System.Collections.Generic.IEnumerator`1"/>) yields to say when
+            it should be resumed. All delays are in simulation microseconds.
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Primitives.SimYield.DelayUs">
+            <summary>Microseconds to wait before the coroutine is resumed (0 = next processing pass). Ignored when <see cref="F:SimulaSharp.Kernel.Primitives.SimYield.Awaited"/> is set.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Primitives.SimYield.Awaited">
+            <summary>
+            When non-null, the coroutine is resumed on its own site once this task completes,
+            rather than after a delay (see <see cref="M:SimulaSharp.Kernel.Primitives.SimYield.Await(System.Threading.Tasks.Task)"/>).
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Primitives.SimYield.Immediate">
+            <summary>Resume on the next processing pass (zero delay).</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Primitives.SimYield.Delay(System.Int64)">
+            <summary>Resume after the specified delay in microseconds.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Primitives.SimYield.Await(System.Threading.Tasks.Task)">
+            <summary>
+            Suspend the coroutine until <paramref name="task"/> completes (e.g. a cross-site
+            request), then resume it on its own site. Read the result from the task after
+            resuming — it is complete by then:
+            <code>var t = peer.Foo(Scheduler); yield return SimYield.Await(t); var r = t.GetAwaiter().GetResult();</code>
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Primitives.TimeSnapshot">
+            <summary>
+            A consistent capture of the clock's time, taken from a <b>single</b> read of the
+            horizon. Use this instead of reading sim time and mission time separately — two
+            separate reads can straddle a horizon update and disagree by a tick.
+            </summary>
+            <param name="SimTimeUs">Elapsed simulation time in microseconds.</param>
+            <param name="MissionTimeUs">Absolute mission time in microseconds (mission epoch + sim time).</param>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Primitives.TimeSnapshot.#ctor(System.Int64,System.Int64)">
+            <summary>
+            A consistent capture of the clock's time, taken from a <b>single</b> read of the
+            horizon. Use this instead of reading sim time and mission time separately — two
+            separate reads can straddle a horizon update and disagree by a tick.
+            </summary>
+            <param name="SimTimeUs">Elapsed simulation time in microseconds.</param>
+            <param name="MissionTimeUs">Absolute mission time in microseconds (mission epoch + sim time).</param>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Primitives.TimeSnapshot.SimTimeUs">
+            <summary>Elapsed simulation time in microseconds.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Primitives.TimeSnapshot.MissionTimeUs">
+            <summary>Absolute mission time in microseconds (mission epoch + sim time).</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Services.EventQueue">
+            <summary>
+            The scheduling data structure owned by a single <see cref="T:SimulaSharp.Kernel.Services.SimSite"/>.
+            <para>
+            <b>Threading:</b> this type is <em>not</em> thread-safe by design. It is only
+            ever touched by its owning SimSite's thread — model code runs on that thread,
+            and cross-thread work is marshalled onto it via the site's inbox before it
+            reaches the queue. Keeping it lock-free is the whole point of the
+            "closely-bound models call each other directly" model.
+            </para>
+            <para>
+            <b>Storage:</b> a fixed-capacity <see cref="T:SimulaSharp.Kernel.Services.EventQueue.Slot"/> array with a
+            <see cref="T:System.Collections.Generic.Queue`1"/> free-list, so steady-state scheduling is
+            allocation-free. A <see cref="T:System.Collections.Generic.PriorityQueue`2"/> keyed by due-time
+            (microseconds) orders pending work. Slot indices double as event ids.
+            </para>
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Services.EventQueue.Slot">
+            <summary>
+            One scheduled entry. Exactly one of <see cref="F:SimulaSharp.Kernel.Services.EventQueue.Slot.Factory"/>/<see cref="F:SimulaSharp.Kernel.Services.EventQueue.Slot.Coroutine"/>
+            or <see cref="F:SimulaSharp.Kernel.Services.EventQueue.Slot.OneShot"/> is active; the others are null.
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.EventQueue.Slot.DueTimeUs">
+            <summary>Absolute simulation time (µs) at which this entry is next due.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.EventQueue.Slot.Factory">
+            <summary>
+            Deferred coroutine constructor. Held until the entry first fires, then
+            invoked to build <see cref="F:SimulaSharp.Kernel.Services.EventQueue.Slot.Coroutine"/>. Deferring construction means the
+            coroutine's body doesn't start running until its scheduled time.
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.EventQueue.Slot.Coroutine">
+            <summary>The live coroutine once materialized from <see cref="F:SimulaSharp.Kernel.Services.EventQueue.Slot.Factory"/>.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.EventQueue.Slot.OneShot">
+            <summary>A one-shot or periodic action (null for coroutine entries).</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.EventQueue.Slot.PeriodUs">
+            <summary>Repeat interval (µs) for a periodic action; 0 for one-shot.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.EventQueue.Slot.Version">
+            <summary>Bumped when the slot is freed; guards a stale <see cref="M:SimulaSharp.Kernel.Services.EventQueue.ReArm(System.Int32,System.Int32,System.Int64)"/> against a reused slot.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.EventQueue._dueBatch">
+            <summary>
+            Reusable buffer for the slots due in the current <see cref="M:SimulaSharp.Kernel.Services.EventQueue.ProcessDue(System.Int64)"/> pass.
+            Snapshotting the due set before executing gives correct "next pass" semantics:
+            work (re)scheduled during a pass — including zero-delay yields — runs on the
+            <em>next</em> pass, not this one, so a tight coroutine can't starve the loop.
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.EventQueue.OnAwait">
+            <summary>
+            Invoked when a coroutine yields <see cref="M:SimulaSharp.Kernel.Primitives.SimYield.Await(System.Threading.Tasks.Task)"/>, with (slot, version, task).
+            The owner (SimSite) must arrange to call <see cref="M:SimulaSharp.Kernel.Services.EventQueue.ReArm(System.Int32,System.Int32,System.Int64)"/> on its own thread once the
+            task completes; set it before running awaiting coroutines.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.EventQueue.#ctor(System.Int32)">
+            <summary>Creates a queue that can hold at most <paramref name="maxCapacity"/> pending entries.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.EventQueue.AddEvent(System.Action,System.Int64)">
+            <summary>Schedules a one-shot action for <paramref name="dueTimeUs"/>.</summary>
+            <returns>The event id (slot), or -1 if the time is negative or the queue is full.</returns>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.EventQueue.AddPeriodic(System.Action,System.Int64,System.Int64)">
+            <summary>
+            Schedules a repeating action: first firing at <paramref name="dueTimeUs"/>,
+            then every <paramref name="periodUs"/> thereafter.
+            </summary>
+            <returns>The event id (slot), or -1 on invalid arguments or a full queue.</returns>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.EventQueue.AddCoroutine(System.Func{System.Collections.Generic.IEnumerator{SimulaSharp.Kernel.Primitives.SimYield}},System.Int64)">
+            <summary>
+            Schedules a coroutine "process". The <paramref name="factory"/> is invoked at
+            <paramref name="dueTimeUs"/> (not now), and each subsequent step is re-scheduled
+            by the delay the coroutine yields (<see cref="T:SimulaSharp.Kernel.Primitives.SimYield"/>).
+            </summary>
+            <returns>The event id (slot), or -1 if the time is negative or the queue is full.</returns>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.EventQueue.RemoveEvent(System.Int32)">
+            <summary>
+            Cancels a pending event by id. No effect if the id is unknown or the event has
+            already fired (or is in the current due-batch, which cannot be cancelled mid-pass).
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.EventQueue.PeekNextDueTime">
+            <summary>The due time (µs) of the earliest pending event, or -1 if the queue is empty.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.EventQueue.ProcessDue(System.Int64)">
+            <summary>
+            Fires every entry due at or before <paramref name="nowUs"/>.
+            <para>
+            Uses a two-phase snapshot: first the due slots are collected (in due-time
+            order), then executed. Anything scheduled while executing — periodic
+            re-arms, coroutine continuations, zero-delay yields, or brand-new events —
+            lands back in the priority queue for a <em>later</em> pass, never this one.
+            </para>
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.EventQueue.Fire(System.Int32)">
+            <summary>Executes one due entry, with exception isolation and guaranteed cleanup.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.EventQueue.ReArm(System.Int32,System.Int32,System.Int64)">
+            <summary>
+            Re-arms a coroutine parked by <see cref="M:SimulaSharp.Kernel.Primitives.SimYield.Await(System.Threading.Tasks.Task)"/> so it resumes at
+            <paramref name="nowUs"/>. Must be called on the owning site's thread (via its inbox).
+            No-ops if the slot was freed/reused since parking (guarded by <paramref name="version"/>).
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.EventQueue.FreeSlot(System.Int32)">
+            <summary>Clears a slot and returns it to the free-list for reuse.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Services.IClock">
+            <summary>
+            Hard real-time clock owned by a <see cref="!:Simulator"/>. A single writer thread
+            advances the horizon; observers (SimSites) read it. Time never runs faster or
+            slower than real time — <see cref="M:SimulaSharp.Kernel.Services.IClock.Pause"/> freezes it, <see cref="M:SimulaSharp.Kernel.Services.IClock.Start"/>
+            resumes it. There is no reset: create a new simulation instead.
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.IClock.SimNowUs">
+            <summary>Elapsed simulation time in microseconds (the volatile horizon).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.IClock.MissionNowUs">
+            <summary>Absolute mission time in microseconds (mission epoch + <see cref="P:SimulaSharp.Kernel.Services.IClock.SimNowUs"/>).</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IClock.Now">
+            <summary>
+            Captures sim time and mission time together from a single horizon read, so the
+            two are guaranteed consistent (unlike reading <see cref="P:SimulaSharp.Kernel.Services.IClock.SimNowUs"/> and
+            <see cref="P:SimulaSharp.Kernel.Services.IClock.MissionNowUs"/> in sequence).
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.IClock.IsRunning">
+            <summary>True while time is advancing (i.e. started and not paused).</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IClock.Start">
+            <summary>Start or resume the clock. Raises <see cref="E:SimulaSharp.Kernel.Services.IClock.Started"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IClock.Pause">
+            <summary>Freeze the horizon. Raises <see cref="E:SimulaSharp.Kernel.Services.IClock.Stopped"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IClock.PauseAtSimUs(System.Int64)">
+            <summary>
+            Arms an automatic <see cref="M:SimulaSharp.Kernel.Services.IClock.Pause"/> for when the horizon first reaches
+            <paramref name="simTimeUs"/>; pass a negative value to disarm. A manual
+            <see cref="M:SimulaSharp.Kernel.Services.IClock.Pause"/> also disarms it (so a user freeze is never silently re-armed).
+            Time still advances continuously at 1:1 up to the target — this is a stop boundary,
+            not a jump — so overshoot is bounded by the clock's spin granularity.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IClock.RunFor(System.Int64)">
+            <summary>
+            Runs for <paramref name="durationUs"/> µs of sim time from now, then pauses,
+            <em>blocking the caller</em> until that pause fires. If the clock is not already
+            running it is started; a non-positive duration pauses immediately. Because time
+            advances at real time, this call takes roughly <paramref name="durationUs"/> of
+            wall-clock time — it is a controlled real-time run, not a fast-forward.
+            </summary>
+        </member>
+        <member name="E:SimulaSharp.Kernel.Services.IClock.Started">
+            <summary>Raised when the clock starts or resumes.</summary>
+        </member>
+        <member name="E:SimulaSharp.Kernel.Services.IClock.Stopped">
+            <summary>Raised when the clock pauses.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Services.IScheduler">
+            <summary>
+            The scheduling surface a model uses to run work on its own SimSite. Delays are
+            relative to the clock's current time. Actions receive no time argument — read
+            the clock (<see cref="P:SimulaSharp.Kernel.Services.IClock.SimNowUs"/>) when "now" is needed.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IScheduler.AddEvent(System.Action,System.Int64)">
+            <summary>Schedules a one-shot action to run <paramref name="delayUs"/> µs from now.</summary>
+            <returns>The event id, or -1 if the queue is full.</returns>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IScheduler.AddPeriodicEvent(System.Action,System.Int64)">
+            <summary>Schedules a repeating action every <paramref name="periodUs"/> µs (first run after that period).</summary>
+            <returns>The event id, or -1 if the queue is full.</returns>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IScheduler.AddCoroutine(System.Func{System.Collections.Generic.IEnumerator{SimulaSharp.Kernel.Primitives.SimYield}},System.Int64)">
+            <summary>
+            Schedules a coroutine process, first stepped <paramref name="delayUs"/> µs from now;
+            the <paramref name="factory"/> is materialized at that first step and each yield
+            re-schedules the next step by its delay.
+            </summary>
+            <returns>The event id, or -1 if the queue is full.</returns>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IScheduler.AddEventAtMission(System.Action,System.Int64)">
+            <summary>
+            Schedules a one-shot action at an absolute mission time (µs since the mission epoch,
+            i.e. against <see cref="P:SimulaSharp.Kernel.Services.IClock.MissionNowUs"/>) instead of a relative delay.
+            </summary>
+            <returns>The event id, or -1 if the instant is already in the past or the queue is full.</returns>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IScheduler.AddPeriodicEventAtMission(System.Action,System.Int64,System.Int64)">
+            <summary>
+            Schedules a repeating action whose <em>first</em> firing is at the absolute mission time
+            <paramref name="missionTimeUs"/>, then every <paramref name="periodUs"/> µs thereafter
+            (the period stays a relative interval; only the first firing is mission-anchored).
+            </summary>
+            <returns>The event id, or -1 if the instant is in the past, the period is non-positive, or the queue is full.</returns>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IScheduler.AddCoroutineAtMission(System.Func{System.Collections.Generic.IEnumerator{SimulaSharp.Kernel.Primitives.SimYield}},System.Int64)">
+            <summary>
+            Schedules a coroutine process first stepped at the absolute mission time
+            <paramref name="missionTimeUs"/>; subsequent steps follow the delays it yields.
+            </summary>
+            <returns>The event id, or -1 if the instant is already in the past or the queue is full.</returns>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IScheduler.RemoveEvent(System.Int32)">
+            <summary>Cancels a pending event by id; no effect if it has already fired or the id is unknown.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IScheduler.Post(System.Action)">
+            <summary>Fire-and-forget cross-thread work, run on this site's thread during its next drain.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IScheduler.InjectVoidAsync(System.Action)">
+            <summary>
+            Runs cross-thread work on this site's thread; the returned task completes when it
+            finishes (or faults if it throws).
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IScheduler.InjectAsync``1(System.Func{``0})">
+            <summary>
+            Runs a cross-thread function on this site's thread; the returned task yields its
+            result (or faults if it throws).
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Services.ISimulator">
+            <summary>
+            The control endpoint for a whole simulation. A generated
+            <c>&lt;SimName&gt;Simulator</c> implements this (over <c>SimulatorBase</c>). The
+            driver (MMI or CLI) walks the lifecycle: register any log sinks, then
+            <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Initialize"/> (build the topology), <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Configure"/> (run each
+            model's setup), then <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Start"/>/<see cref="M:SimulaSharp.Kernel.Services.ISimulator.Stop"/>.
+            <para>Single-use: there is no reset — <see cref="M:System.IDisposable.Dispose"/> tears it down.</para>
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.ISimulator.Clock">
+            <summary>The simulation clock — read time and observe the run lifecycle.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.ISimulator.State">
+            <summary>The current lifecycle state (Initial → Initialized → Configured → Running).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.ISimulator.IsRunning">
+            <summary>True while the simulation is running (started and not stopped).</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.ISimulator.RegisterLogSink(SimulaSharp.Kernel.Logging.ILogSink)">
+            <summary>
+            Registers a log destination. May be called at any time, including while the
+            simulation is running; entries produced after registration fan out to it.
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.ISimulator.Knobs">
+            <summary>The discovered knobs across every model instance (populated by <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Initialize"/>).</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.ISimulator.RegisterKnobChannel(SimulaSharp.Kernel.Knobs.IKnobChannel)">
+            <summary>
+            Registers a knob channel (the MMI). It receives the discovered knobs and a push
+            on every value change. May be registered before or after <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Initialize"/>.
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.ISimulator.Plottables">
+            <summary>
+            The discovered plot-telemetry points across every model instance (populated by
+            <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Initialize"/>), keyed by full dotted instance path. Sample them in one
+            mission-time-stamped sweep via <see cref="M:SimulaSharp.Kernel.Services.ISimulator.SamplePlottables"/>.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.ISimulator.SamplePlottables">
+            <summary>
+            Samples every plottable in one sweep, stamped with a single mission time read once, so
+            all points share a consistent x-axis. The plot consumer (MMI) calls this at its own cadence.
+            </summary>
+            <returns>The mission time (µs) of the sweep and a path → value snapshot.</returns>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.ISimulator.Initialize">
+            <summary>Builds the topology: constructs the SimSites and model tree, wires references, fills config.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.ISimulator.Configure">
+            <summary>Runs every model's and service's <c>Configure()</c> depth-first. Call after <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Initialize"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.ISimulator.Start">
+            <summary>Starts or resumes the run.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.ISimulator.Stop">
+            <summary>Freezes the run; resume with <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Start"/>.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Services.ServiceEventChannel">
+            <summary>
+            Backing for a payload-less fire-and-forget <c>[ServiceEvent]</c>. Holds the
+            subscribers (each a callback plus the scheduler it must run on) and, on
+            <see cref="M:SimulaSharp.Kernel.Services.ServiceEventChannel.Trigger"/>, <see cref="M:SimulaSharp.Kernel.Services.IScheduler.Post(System.Action)"/>s each callback onto its own
+            site. The subscriber list is copy-on-write, so triggering is lock-free and
+            registration is safe from any thread. The generated service wraps one of these per
+            event behind <c>Trigger_&lt;Name&gt;()</c> / <c>RegisterCallback_&lt;Name&gt;(...)</c>.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.ServiceEventChannel.Register(SimulaSharp.Kernel.Services.IScheduler,System.Action)">
+            <summary>Subscribes <paramref name="callback"/>, to be invoked on <paramref name="scheduler"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.ServiceEventChannel.Trigger">
+            <summary>Posts every subscriber's callback onto its own site (fire-and-forget).</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Services.ServiceEventChannel`1">
+            <summary>
+            Backing for a fire-and-forget <c>[ServiceEvent]</c> carrying a payload of type
+            <typeparamref name="T"/>. See <see cref="T:SimulaSharp.Kernel.Services.ServiceEventChannel"/>.
+            </summary>
+            <typeparam name="T">The event payload type.</typeparam>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.ServiceEventChannel`1.Register(SimulaSharp.Kernel.Services.IScheduler,System.Action{`0})">
+            <summary>Subscribes <paramref name="callback"/>, to be invoked on <paramref name="scheduler"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.ServiceEventChannel`1.Trigger(`0)">
+            <summary>Posts every subscriber's callback (with <paramref name="value"/>) onto its own site.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Services.SimClock">
+            <summary>
+            The hard real-time clock for a simulation run.
+            <para>
+            A single background thread (the sole writer) continuously advances the
+            <em>horizon</em> — elapsed simulation time in microseconds — and publishes it
+            to a plain <see cref="T:System.Int64"/> field. Observers (SimSites) read that field with
+            <see cref="!:Volatile.Read(ref long)"/>. Because there is exactly one writer and
+            the field is a naturally-aligned 64-bit value, volatile semantics are
+            sufficient: we need visibility/ordering, not the read-modify-write atomicity
+            that <see cref="T:System.Threading.Interlocked"/> provides.
+            </para>
+            <para>
+            Time always advances at real time (1:1). There is no speed factor and no
+            reset: <see cref="M:SimulaSharp.Kernel.Services.SimClock.Pause"/> freezes the horizon, <see cref="M:SimulaSharp.Kernel.Services.SimClock.Start"/> resumes it,
+            and to start over you create a new <see cref="!:Simulator"/>.
+            </para>
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimClock._missionEpochUs">
+            <summary>Mission epoch as microseconds since the Unix epoch (constant).</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimClock._sw">
+            <summary>Measures real time elapsed within the current running segment.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimClock._baseUs">
+            <summary>
+            Simulation microseconds accumulated across previous running segments
+            (i.e. everything before the current <see cref="F:SimulaSharp.Kernel.Services.SimClock._sw"/> segment). Combined
+            with the stopwatch this survives pause/resume without losing time.
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimClock._horizonUs">
+            <summary>
+            The published horizon (elapsed simulation µs). Written only by the clock
+            thread; read by observers via <see cref="!:Volatile.Read(ref long)"/>.
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimClock._resume">
+            <summary>Released to wake the clock thread out of its paused wait.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimClock._pauseAtUs">
+            <summary>
+            Horizon (µs) at which the clock auto-pauses, or -1 when disarmed. Written by the
+            arming caller (<see cref="M:SimulaSharp.Kernel.Services.SimClock.PauseAtSimUs(System.Int64)"/>/<see cref="M:SimulaSharp.Kernel.Services.SimClock.RunFor(System.Int64)"/>) and cleared by the
+            clock thread when it fires or by any <see cref="M:SimulaSharp.Kernel.Services.SimClock.Pause"/>. A single naturally-aligned
+            64-bit value read/written with <see cref="T:System.Threading.Volatile"/> — visibility only, no
+            read-modify-write, so no <see cref="T:System.Threading.Interlocked"/> is needed.
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimClock._paused">
+            <summary>
+            Signalled on every <see cref="M:SimulaSharp.Kernel.Services.SimClock.Pause"/> so a caller blocked in <see cref="M:SimulaSharp.Kernel.Services.SimClock.RunFor(System.Int64)"/>
+            wakes as soon as the run boundary (or any freeze) is reached.
+            </summary>
+        </member>
+        <member name="E:SimulaSharp.Kernel.Services.SimClock.Started">
+            <inheritdoc/>
+        </member>
+        <member name="E:SimulaSharp.Kernel.Services.SimClock.Stopped">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.#ctor(System.DateTime)">
+            <summary>
+            Creates a clock whose mission time is anchored at <paramref name="missionStart"/>.
+            The horizon starts at 0; the clock does not advance until <see cref="M:SimulaSharp.Kernel.Services.SimClock.Start"/>.
+            </summary>
+            <param name="missionStart">Absolute wall-clock time that maps to horizon 0.</param>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.SimClock.SimNowUs">
+            <inheritdoc/>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.SimClock.MissionNowUs">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.Now">
+            <inheritdoc/>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.SimClock.IsRunning">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.SegmentUs">
+            <summary>
+            Real-time microseconds elapsed in the current running segment. Derived from
+            total elapsed ticks (not accumulated per-iteration deltas), so it carries no
+            truncation drift.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.Start">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.Pause">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.PauseAtSimUs(System.Int64)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.RunFor(System.Int64)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.Run">
+            <summary>
+            The clock thread. While running it hot-publishes the horizon; while paused it
+            blocks on <see cref="F:SimulaSharp.Kernel.Services.SimClock._resume"/> so it consumes no CPU.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.Dispose">
+            <summary>
+            Stops the clock thread and releases resources. The instance cannot be
+            restarted afterwards (create a new simulation instead).
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Services.SimSite">
+            <summary>
+            An independent scheduling domain: one thread, one <see cref="T:SimulaSharp.Kernel.Services.EventQueue"/>.
+            <para>
+            A root model and its whole containment subtree share a single SimSite, so
+            closely-bound models run on the same thread and call each other directly,
+            lock-free. Work from <em>other</em> sites/threads arrives through the lock-free
+            <see cref="M:SimulaSharp.Kernel.Services.SimSite.Post(System.Action)"/>/<see cref="M:SimulaSharp.Kernel.Services.SimSite.InjectAsync``1(System.Func{``0})"/> inbox and is executed on this
+            site's thread, so the event queue is only ever touched single-threaded.
+            </para>
+            <para>
+            <b>Execution:</b> while the clock is running the site <em>busy-spins</em> — it
+            reads the clock's horizon, fires everything now due, and loops. A busy-spin
+            (rather than a timed wait) is required for microsecond-accurate hard real-time
+            and to stay responsive to ad-hoc work injected by other threads at any moment.
+            While the clock is paused the site blocks, consuming no CPU.
+            </para>
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimSite._inbox">
+            <summary>Cross-thread work destined for this site's thread (lock-free).</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimSite._resume">
+            <summary>Parks the run loop while the clock is paused; released on resume/stop.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.SimSite.Name">
+            <summary>Human-readable site name (used for the thread name and diagnostics).</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.#ctor(System.String,SimulaSharp.Kernel.Services.IClock,System.Int32)">
+            <summary>
+            Creates a site bound to <paramref name="clock"/>. The site does no work until
+            <see cref="M:SimulaSharp.Kernel.Services.SimSite.Start"/> is called and the clock is running.
+            </summary>
+            <param name="name">Diagnostic name.</param>
+            <param name="clock">The shared simulation clock.</param>
+            <param name="maxEvents">Capacity of the site's event queue.</param>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.Start">
+            <summary>
+            Starts the site's thread and subscribes to the clock lifecycle. Safe to call
+            before or after the clock starts: the current clock state is captured, and
+            <see cref="E:SimulaSharp.Kernel.Services.IClock.Started"/>/<see cref="E:SimulaSharp.Kernel.Services.IClock.Stopped"/> keep it in sync.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.Stop">
+            <summary>Unsubscribes from the clock, stops the thread, and joins it.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.AddEvent(System.Action,System.Int64)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.AddPeriodicEvent(System.Action,System.Int64)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.AddCoroutine(System.Func{System.Collections.Generic.IEnumerator{SimulaSharp.Kernel.Primitives.SimYield}},System.Int64)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.MissionDueUs(System.Int64)">
+            <summary>
+            Converts an absolute mission time (µs) into the absolute sim-time due the
+            <see cref="T:SimulaSharp.Kernel.Services.EventQueue"/> expects, using a single consistent clock snapshot so the
+            sim/mission pair can't tear across two separate reads. Returns -1 for a past instant.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.AddEventAtMission(System.Action,System.Int64)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.AddPeriodicEventAtMission(System.Action,System.Int64,System.Int64)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.AddCoroutineAtMission(System.Func{System.Collections.Generic.IEnumerator{SimulaSharp.Kernel.Primitives.SimYield}},System.Int64)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.RemoveEvent(System.Int32)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.Post(System.Action)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.InjectVoidAsync(System.Action)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.InjectAsync``1(System.Func{``0})">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.RunLoop">
+            <summary>
+            Busy-spins while running: drain the inbox, then fire everything due at the
+            clock's current horizon. Parks on <see cref="F:SimulaSharp.Kernel.Services.SimSite._resume"/> while paused so a
+            stopped simulation costs nothing.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.Dispose">
+            <summary>Stops the site and releases its wait handle.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Services.SimulatorBase">
+            <summary>
+            The reusable machinery every simulation shares, and the base the generated
+            <c>&lt;SimName&gt;Simulator</c> extends. It owns the <see cref="T:SimulaSharp.Kernel.Services.SimClock"/>, the
+            SimSites and the constructed models/services, fans log entries out to the
+            registered sinks, and implements the <see cref="T:SimulaSharp.Kernel.Services.ISimulator"/> lifecycle.
+            <para>
+            The generated subclass supplies the topology by implementing
+            <see cref="M:SimulaSharp.Kernel.Services.SimulatorBase.OnInitialize"/> with the protected building blocks below (create sites,
+            mint loggers, construct and register components, wire references, fill config).
+            </para>
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.#ctor(System.DateTime)">
+            <param name="missionStart">Absolute wall-clock time mapped to simulation time 0.</param>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.SimulatorBase.Clock">
+            <inheritdoc/>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.SimulatorBase.State">
+            <inheritdoc/>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.SimulatorBase.IsRunning">
+            <inheritdoc/>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.SimulatorBase.Knobs">
+            <inheritdoc/>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.SimulatorBase.Plottables">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.RegisterLogSink(SimulaSharp.Kernel.Logging.ILogSink)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.RegisterKnobChannel(SimulaSharp.Kernel.Knobs.IKnobChannel)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.AttachChannel(SimulaSharp.Kernel.Knobs.IKnobChannel)">
+            <summary>Hands the channel the discovered knobs and subscribes it to each knob's changes.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.CreateSite(System.String,System.Int32)">
+            <summary>Creates and registers a root SimSite (one per assembly <c>Sites[]</c> entry).</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.CreateLogger(System.String)">
+            <summary>Creates a component-scoped logger over this simulation's clock and sink fan-out.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.CollectKnobsFrom(SimulaSharp.Kernel.Model.IModel,System.String)">
+            <summary>Collects a model's knobs (if any) into the simulation's cached list, stamped with its full path.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.CollectPlottablesFrom(SimulaSharp.Kernel.Model.IModel,System.String)">
+            <summary>Collects a model's plottables (if any) into the simulation's map, keyed by full path.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.SamplePlottables">
+            <summary>
+            Samples every plottable in one sweep, stamped with a single mission time
+            (<see cref="P:SimulaSharp.Kernel.Services.IClock.MissionNowUs"/>) read once — so all points in the returned frame
+            share a consistent x-axis. The plot consumer (MMI) calls this at its own cadence.
+            </summary>
+            <returns>The mission time (µs) of the sweep and a path → value snapshot.</returns>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.Register``1(``0)">
+            <summary>Registers a constructed model so it is Configured and Disposed with the simulation.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.RegisterService``1(``0)">
+            <summary>Registers a service, adopting its own SimSite into the simulation's lifecycle.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.OnInitialize">
+            <summary>
+            Implemented by the generated subclass: construct the SimSites and model tree,
+            wire references, and fill config values, using the protected building blocks.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.Initialize">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.Configure">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.Start">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.Stop">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.Dispose">
+            <summary>
+            Tears the simulation down (single-use, no reset): stop every site thread, run
+            each service's then each model's deinit while nothing is executing, then
+            dispose the sites and the clock.
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Services.SimulatorState">
+            <summary>
+            The lifecycle state of a simulation, advanced by the <see cref="T:SimulaSharp.Kernel.Services.ISimulator"/>
+            steps. The states are a strict progression.
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimulatorState.Initial">
+            <summary>Not yet initialized — nothing has been built.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimulatorState.Initialized">
+            <summary>
+            Models constructed and their containers/references assembled, then config
+            values applied — the result of <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Initialize"/>.
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimulatorState.Configured">
+            <summary>Every component's <c>Configure()</c> has run, depth-first — the result of <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Configure"/>.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimulatorState.Running">
+            <summary>
+            The run phase, entered by <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Start"/>. Use
+            <see cref="P:SimulaSharp.Kernel.Services.ISimulator.IsRunning"/> for the live clock status, since
+            <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Stop"/> freezes without leaving this state.
+            </summary>
+        </member>
+    </members>
+</doc>

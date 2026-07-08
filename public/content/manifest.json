@@ -1,0 +1,70 @@
+{
+  "sections": [
+    {
+      "title": "Get oriented",
+      "pages": [
+        { "slug": "introduction", "title": "Introduction", "file": "introduction.md" },
+        { "slug": "big-picture", "title": "The big picture", "file": "big-picture.md" },
+        { "slug": "authoring-model", "title": "The authoring model", "file": "authoring-model.md" }
+      ]
+    },
+    {
+      "title": "Concepts",
+      "pages": [
+        { "slug": "time-and-clock", "title": "Time & the clock", "file": "time-and-clock.md" },
+        { "slug": "simsites-and-actors", "title": "SimSites & the actor model", "file": "simsites-and-actors.md" },
+        { "slug": "event-queue-and-scheduling", "title": "The event queue & scheduling", "file": "event-queue-and-scheduling.md" },
+        { "slug": "coroutines", "title": "Coroutines (SimYield)", "file": "coroutines.md" },
+        { "slug": "models-and-containment", "title": "Models & containment", "file": "models-and-containment.md" },
+        { "slug": "associations", "title": "Associations: containment vs reference", "file": "associations.md" },
+        { "slug": "services", "title": "Services", "file": "services.md" },
+        { "slug": "observability", "title": "Observability: knobs & plottables", "file": "observability.md" },
+        { "slug": "configuration", "title": "Configuration", "file": "configuration.md" },
+        { "slug": "the-assembly", "title": "The assembly", "file": "the-assembly.md" },
+        { "slug": "simulator-lifecycle", "title": "The simulator lifecycle", "file": "simulator-lifecycle.md" },
+        { "slug": "packing-and-hosting", "title": "Packing & hosting", "file": "packing-and-hosting.md" }
+      ]
+    },
+    {
+      "title": "Designing a simulator",
+      "pages": [
+        { "slug": "choosing-a-topology", "title": "Choosing a topology", "file": "choosing-a-topology.md" },
+        { "slug": "modeling-a-subsystem", "title": "Modeling a subsystem", "file": "modeling-a-subsystem.md" },
+        { "slug": "interaction-patterns", "title": "Interaction patterns", "file": "interaction-patterns.md" },
+        { "slug": "model-vs-service", "title": "Model vs service", "file": "model-vs-service.md" },
+        { "slug": "observability-design", "title": "Designing observability", "file": "observability-design.md" },
+        { "slug": "time-and-determinism", "title": "Time & determinism", "file": "time-and-determinism.md" },
+        { "slug": "pitfalls", "title": "Pitfalls", "file": "pitfalls.md" }
+      ]
+    },
+    {
+      "title": "Scenarios",
+      "pages": [
+        { "slug": "scenario-hello-sim", "title": "Hello sim (one model)", "file": "scenario-hello-sim.md" },
+        { "slug": "scenario-integrator", "title": "A stateful integrator", "file": "scenario-integrator.md" },
+        { "slug": "scenario-controller-plant", "title": "Controller & plant (cross-site)", "file": "scenario-controller-plant.md" },
+        { "slug": "scenario-shared-service", "title": "A shared service", "file": "scenario-shared-service.md" },
+        { "slug": "scenario-satellite", "title": "A satellite topology", "file": "scenario-satellite.md" },
+        { "slug": "scenario-pack-and-load", "title": "Pack & load", "file": "scenario-pack-and-load.md" }
+      ]
+    },
+    {
+      "title": "Getting started",
+      "pages": [
+        { "slug": "prerequisites", "title": "Prerequisites & install", "file": "prerequisites.md" },
+        { "slug": "project-setup", "title": "Project setup", "file": "project-setup.md" },
+        { "slug": "build-run-test", "title": "Build, run & test", "file": "build-run-test.md" },
+        { "slug": "dev-loop", "title": "The dev loop", "file": "dev-loop.md" }
+      ]
+    },
+    {
+      "title": "Reference",
+      "pages": [
+        { "slug": "attribute-reference", "title": "Attribute reference", "file": "attribute-reference.md" },
+        { "slug": "assembly-yaml-reference", "title": "Assembly YAML reference", "file": "assembly-yaml-reference.md" },
+        { "slug": "glossary", "title": "Glossary", "file": "glossary.md" },
+        { "slug": "roadmap", "title": "Roadmap", "file": "roadmap.md" }
+      ]
+    }
+  ]
+}

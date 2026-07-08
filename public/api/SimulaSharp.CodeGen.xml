@@ -1,0 +1,143 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>SimulaSharp.CodeGen</name>
+    </assembly>
+    <members>
+        <member name="T:SimulaSharp.CodeGen.ConfigGenerator">
+            <summary>
+            For every partial model/service with <c>[Config]</c>-marked members, emits an
+            <c>internal void __ApplyConfig(IReadOnlyDictionary&lt;string, string?&gt; config)</c>
+            that binds the assembly's (weakly-typed, textual) <c>Config</c> values into the
+            strongly-typed members: each member is looked up by its key, converted to its
+            declared type, and assigned; a missing required key throws. The generated simulator
+            calls this with each instance's <c>Config</c> block before <c>Configure()</c> runs.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ConfigGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ConfigGenerator.Settable(Microsoft.CodeAnalysis.ISymbol,Microsoft.CodeAnalysis.ITypeSymbol@)">
+            <summary>True if the member can be assigned from within the class (with its type).</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ConfigGenerator.ConvertExpr(Microsoft.CodeAnalysis.ITypeSymbol,System.String)">
+            <summary>A C# expression converting string variable <paramref name="v"/> to <paramref name="type"/>, or "" if unsupported.</summary>
+        </member>
+        <member name="T:SimulaSharp.CodeGen.KnobGenerator">
+            <summary>
+            For every partial model with knob-decorated partial properties, implements them
+            (volatile get; volatile set + change-notify) and builds a <c>Knob</c> binder
+            per knob via an explicit <c>IKnobProvider.CollectKnobs</c> the simulator calls during
+            discovery. v1 covers value knobs (Text/TickBox/Integer/Float); trigger knobs are
+            deferred.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.KnobGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
+            <inheritdoc/>
+        </member>
+        <member name="T:SimulaSharp.CodeGen.PlottableGenerator">
+            <summary>
+            For every partial model with <c>[Plottable]</c> properties, implements
+            <c>IPlottableProvider.CollectPlottables</c> — building a <c>Plottable</c>
+            binder per member whose <c>Sample</c> delegate does a volatile read (through the
+            member's volatile getter) projected to <c>double</c>.
+            <para>
+            Materialization is coordinated with <see cref="T:SimulaSharp.CodeGen.KnobGenerator"/>: a plottable property
+            that is <em>also</em> a knob is already materialized (volatile backing field + partial
+            get/set) by the knob generator, so here we only reference it. A plottable-only partial
+            property is materialized here (volatile get + set, no change-notify — plottable is
+            observe-only). Either way the sampler reads the same volatile getter.
+            </para>
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.PlottableGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.PlottableGenerator.SampleExpr(Microsoft.CodeAnalysis.IPropertySymbol)">
+            <summary>Projects a supported member type to a <c>double</c> read expression, or null if unsupported.</summary>
+        </member>
+        <member name="T:SimulaSharp.CodeGen.ReferenceAccessorGenerator">
+            <summary>
+            For every partial model with <c>Reference&lt;T&gt;</c> members, emits the access side
+            of the reference split: a <c>protected ReferenceAccessor&lt;TRef&gt; _&lt;Name&gt;</c>
+            per reference (the guarded handle the model calls through) and an explicit
+            <c>IReferenceWiring.WireReferences()</c> that builds each accessor from its
+            <c>Reference</c> collection (via <c>ReferenceAccessor.From</c>). The simulator calls
+            <c>WireReferences</c> once the reference collections are populated.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ReferenceAccessorGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
+            <inheritdoc/>
+        </member>
+        <member name="T:SimulaSharp.CodeGen.RefGenerator">
+            <summary>
+            Emits a <c>&lt;Model&gt;Ref</c> class for every type that implements
+            <c>SimulaSharp.Kernel.Model.IModel</c>. The Ref wraps a model instance and
+            exposes one async accessor per public member (methods verbatim; properties and
+            fields as <c>Get&lt;Name&gt;</c>/<c>Set&lt;Name&gt;</c>). Every accessor takes the
+            caller's scheduler as its first argument: if it matches the target's scheduler
+            the call runs directly (same site) and completes synchronously; otherwise it is
+            marshalled onto the target's site via the inbox and awaited.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.RefGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.RefGenerator.EmitValue(System.Text.StringBuilder,System.String,System.String,System.String,System.String)">
+            <summary>Emits a value-returning accessor: same-site direct, else marshalled via InjectAsync.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.RefGenerator.EmitVoid(System.Text.StringBuilder,System.String,System.String,System.String)">
+            <summary>Emits a void accessor: same-site direct, else marshalled via InjectVoidAsync.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.RefGenerator.Parameters(System.Collections.Generic.IReadOnlyList{Microsoft.CodeAnalysis.IParameterSymbol})">
+            <summary>Renders parameter declarations (with a leading comma) and the matching argument list.</summary>
+        </member>
+        <member name="T:SimulaSharp.CodeGen.ServiceGenerator">
+            <summary>
+            Emits the interaction plumbing for services (types implementing
+            <c>SimulaSharp.Kernel.Model.IService</c>, declared <c>partial</c>):
+            <list type="bullet">
+              <item>For each <c>[ServiceEvent("X", argType?)]</c> — a fire-and-forget publish
+              point — a backing <c>ServiceEventChannel</c>, a public
+              <c>RegisterCallback_X(scheduler, callback)</c> for subscribers, and a protected
+              <c>Trigger_X(...)</c> the service calls to publish (Posts each callback onto its
+              subscriber's site). Returning events (a result type) are not yet generated.</item>
+              <item>For each <c>[ServiceRequest]</c> method <c>Handle_X(..)</c> — a public
+              <c>X(..)</c> caller that marshals the call onto the service's own site and returns
+              an awaitable (<c>Task</c>/<c>Task&lt;T&gt;</c>).</item>
+            </list>
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ServiceGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
+            <inheritdoc/>
+        </member>
+        <member name="T:SimulaSharp.CodeGen.SimulatorGenerator">
+            <summary>
+            Generates a <c>&lt;Name&gt;Simulator : SimulatorBase</c> from each
+            <c>*.simassembly.yaml</c> (an <c>AdditionalFiles</c> item), parsed with YamlDotNet.
+            The generated <c>OnInitialize</c> creates the sites, constructs the services and the
+            model tree (depth-first, wiring containment and applying config), and binds service
+            dependencies. References are not yet wired (pending the reference-accessor generator).
+            <para>
+            Conventions (v1): YAML <c>Type</c> is the fully-qualified type name; models have a
+            <c>(IClock, IScheduler, ILogger)</c> ctor and services a <c>(IClock, ILogger)</c> ctor;
+            the generated class lives in the global namespace with a parameterless ctor.
+            </para>
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.IsSimAssembly(Microsoft.CodeAnalysis.AdditionalText,Microsoft.CodeAnalysis.Diagnostics.AnalyzerConfigOptionsProvider)">
+            <summary>
+            An AdditionalFile is an assembly when it carries the <c>IsSimAssembly</c> metadata — which the
+            CodeGen targets set on every <c>&lt;SimAssembly&gt;</c> item. That tag is the single way to
+            register an assembly; the file may be named anything (the <c>.simassembly.yaml</c> suffix is
+            only a human convention).
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.EmitModel(System.Text.StringBuilder,SimulaSharp.CodeGen.SimulatorGenerator.ModelNode,System.String,System.String,SimulaSharp.CodeGen.SimulatorGenerator.EmitCtx)">
+            <summary>Emits construction + config + containment for a model node; returns its var. Records deps.</summary>
+        </member>
+    </members>
+</doc>

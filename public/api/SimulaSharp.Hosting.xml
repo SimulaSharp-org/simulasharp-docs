@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>SimulaSharp.Hosting</name>
+    </assembly>
+    <members>
+        <member name="T:SimulaSharp.Hosting.SimulatorPackage">
+            <summary>
+            Loads a built simulator pack into a <em>collectible</em> <see cref="T:System.Runtime.Loader.AssemblyLoadContext"/> so
+            the MMI can load and later reload it without bouncing the host. How it works:
+            the pack's payload is shadow-copied to a temp folder (so the original build can be rebuilt
+            while a copy is loaded), the <c>SimulaSharp.*</c> framework assemblies are shared from the
+            Default context (so <see cref="T:SimulaSharp.Kernel.Services.ISimulator"/>/<c>Knob</c>/<c>Plottable</c>/<c>LogEntry</c> have
+            a single type identity across the boundary), and only the pack's own code loads privately.
+            <para>
+            Accepts a <c>.nupkg</c> (produced by <c>dotnet pack</c>; its <c>lib/&lt;tfm&gt;/</c> payload is
+            extracted), a build-output <em>directory</em>, or a single <c>.dll</c>. Simulators are
+            discovered by scanning for public, non-abstract <see cref="T:SimulaSharp.Kernel.Services.SimulatorBase"/> subclasses with a
+            parameterless constructor — the generated <c>&lt;Name&gt;Simulator</c> types.
+            </para>
+            <para>
+            <b>Reload recipe (single-use aligned):</b> dispose the <see cref="T:SimulaSharp.Kernel.Services.ISimulator"/> you created,
+            then dispose this <see cref="T:SimulaSharp.Hosting.SimulatorPackage"/> (unloads the ALC), then construct a new
+            <see cref="T:SimulaSharp.Hosting.SimulatorPackage"/> on the new build. There is no in-place model swap — a fresh
+            instance replaces the old one.
+            </para>
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Hosting.SimulatorPackage.PackLoadContext">
+            <summary>
+            A collectible context that shares the framework from Default and resolves the pack's
+            private dependencies from its own folder via the deps.json-driven resolver.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Hosting.SimulatorPackage.PackLoadContext.#ctor(System.String)">
+            <summary>
+            A collectible context that shares the framework from Default and resolves the pack's
+            private dependencies from its own folder via the deps.json-driven resolver.
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Hosting.SimulatorPackage.SourcePath">
+            <summary>The source path this pack was loaded from (the <c>.nupkg</c>, folder, or dll).</summary>
+        </member>
+        <member name="P:SimulaSharp.Hosting.SimulatorPackage.ShadowDirectory">
+            <summary>The temp folder the pack payload was shadow-copied into; removed on <see cref="M:SimulaSharp.Hosting.SimulatorPackage.Dispose"/> once unloaded.</summary>
+        </member>
+        <member name="P:SimulaSharp.Hosting.SimulatorPackage.Simulators">
+            <summary>The names of the simulators discovered in the pack (the <c>&lt;Name&gt;</c> of each <c>&lt;Name&gt;Simulator</c>).</summary>
+        </member>
+        <member name="M:SimulaSharp.Hosting.SimulatorPackage.#ctor(System.String)">
+            <summary>Loads the pack at <paramref name="path"/> (a <c>.nupkg</c>, a build-output directory, or a <c>.dll</c>).</summary>
+        </member>
+        <member name="M:SimulaSharp.Hosting.SimulatorPackage.Create(System.String)">
+            <summary>
+            Creates a fresh instance of the named simulator. The caller owns its lifecycle
+            (Initialize → Configure → Start/Stop → Dispose); dispose it before disposing this pack.
+            </summary>
+            <exception cref="T:System.ArgumentException">No simulator with that name was found in the pack.</exception>
+            <exception cref="T:System.ObjectDisposedException">The pack has been unloaded.</exception>
+        </member>
+        <member name="M:SimulaSharp.Hosting.SimulatorPackage.Dispose">
+            <summary>
+            Unloads the pack's assembly context and removes the shadow copy. Any <see cref="T:SimulaSharp.Kernel.Services.ISimulator"/>
+            still referenced keeps the context alive until it is disposed and collected.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Hosting.SimulatorPackage.NameOf(System.Type)">
+            <summary>The display name of a <c>&lt;Name&gt;Simulator</c> type — the type name minus a trailing <c>Simulator</c>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Hosting.SimulatorPackage.Materialize(System.String,System.String)">
+            <summary>
+            Copies the pack payload into <paramref name="shadowDir"/> and returns the main assembly path.
+            Handles a <c>.nupkg</c> (extract <c>lib/&lt;tfm&gt;/</c>), a directory (shadow-copy, main =
+            the assembly beside the single <c>*.deps.json</c>), or a single <c>.dll</c> (shadow-copy its folder).
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Hosting.SimulatorPackage.ExtractPackage(System.String,System.String)">
+            <summary>Extracts a NuGet package's <c>lib/&lt;tfm&gt;/</c> payload into <paramref name="shadowDir"/>; returns the main dll (from the nuspec id).</summary>
+        </member>
+        <member name="M:SimulaSharp.Hosting.SimulatorPackage.DepsJsonBaseName(System.String)">
+            <summary>The assembly base name for a <c>&lt;name&gt;.deps.json</c> path (strips the full <c>.deps.json</c> suffix).</summary>
+        </member>
+    </members>
+</doc>

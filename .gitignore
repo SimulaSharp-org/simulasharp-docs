@@ -1,0 +1,10 @@
+# Node / Vite build (the docs are a standalone Node app inside this repo)
+node_modules/
+dist/
+*.local
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp

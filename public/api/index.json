@@ -1,0 +1,17 @@
+{
+  "assemblies": [
+    {
+      "file": "SimulaSharp.Kernel.xml",
+      "name": "SimulaSharp.Kernel"
+    },
+    {
+      "file": "SimulaSharp.CodeGen.xml",
+      "name": "SimulaSharp.CodeGen"
+    },
+    {
+      "file": "SimulaSharp.Hosting.xml",
+      "name": "SimulaSharp.Hosting"
+    }
+  ],
+  "generated": "2026-07-08"
+}
