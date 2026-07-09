@@ -65,6 +65,12 @@ private IEnumerator<SimYield> Process()
 }
 ```
 
+> **The one legitimate blocking loop.** Genuinely external I/O — a socket to real hardware, a HIL link — *does* need a
+> long-running loop, and it must live **outside** sim time. That is what a
+> [`LooselyCoupledServiceBase`](#/guide/services) is for: it runs on its **own** clock-ungated thread (a
+> [`LooselyCoupledSite`](#/guide/sites-and-dispatch)), never a SimSite, so its loop never freezes a subtree. Never put
+> external/blocking I/O on a SimSite; put it there instead.
+
 ---
 
 ## 2. `.Result` / `.Wait()` on a cross-site call from a site thread

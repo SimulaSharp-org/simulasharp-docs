@@ -41,9 +41,23 @@ operator interaction, where "faster than real time" would be meaningless or dang
 > **Consequence for design.** You cannot "speed through" a long scenario. To exercise hours of behaviour you either run
 > for hours, or (for tests) run short and assert on rates. See [time & determinism](#/guide/time-and-determinism).
 
+## Read vs control: two facets of one clock
+
+The clock is split by **capability**, so a model or service can *read and observe* time but never *control* it:
+
+- [`IClock`](#/api/type/SimulaSharp.Kernel.Services.IClock) — the **read/observe** view: `SimNowUs`, `MissionNowUs`,
+  `Now()`, `IsRunning`, and the `Started`/`Stopped` events. This is what a model's `TimeKeeper` and a service's
+  `TimeKeeper` are typed as. It has **no** `Start`/`Pause` — a model *cannot* freeze the simulation out from under its
+  peers.
+- [`SimClock`](#/api/type/SimulaSharp.Kernel.Services.SimClock) — the concrete clock, which **adds control**
+  (`Start`/`Pause`/`PauseAtSimUs`/`RunFor`) and `IDisposable`. The **simulator owns it**; the run's driver reaches
+  control through the simulator ([`ISimulator.Start`/`Stop`/`RunFor`](#/api/type/SimulaSharp.Kernel.Services.ISimulator)).
+
+This is the same capability-segregation principle applied to sites — see [sites & dispatch](#/guide/sites-and-dispatch).
+
 ## Start, pause, resume — never reset
 
-The clock has two control verbs and no third:
+The clock has two control verbs and no third (on the concrete `SimClock`, driven by the simulator):
 
 - **`Start()`** — begin (or resume) advancing. Raises `Started`.
 - **`Pause()`** — freeze the horizon exactly where it is. Raises `Stopped`.

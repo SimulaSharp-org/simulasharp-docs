@@ -13,6 +13,7 @@
       "pages": [
         { "slug": "time-and-clock", "title": "Time & the clock", "file": "time-and-clock.md" },
         { "slug": "simsites-and-actors", "title": "SimSites & the actor model", "file": "simsites-and-actors.md" },
+        { "slug": "sites-and-dispatch", "title": "Sites & dispatch (capabilities)", "file": "sites-and-dispatch.md" },
         { "slug": "event-queue-and-scheduling", "title": "The event queue & scheduling", "file": "event-queue-and-scheduling.md" },
         { "slug": "coroutines", "title": "Coroutines (SimYield)", "file": "coroutines.md" },
         { "slug": "models-and-containment", "title": "Models & containment", "file": "models-and-containment.md" },

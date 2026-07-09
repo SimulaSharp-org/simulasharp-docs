@@ -63,10 +63,16 @@ public partial class DemoService : ServiceBase
 
 | Member | What it is |
 |---|---|
-| `TimeKeeper` | The shared simulation clock (read "now"). |
+| `TimeKeeper` | The shared simulation clock (read "now" — read-only, a service cannot control it). |
 | `Logger` | The service's component-scoped logger. |
-| `Scheduler` | The service's **own** SimSite. Every call into the service is marshalled onto this. |
+| `Site` | The service's **own** site, as an [`IDispatcherSite`](#/api/type/SimulaSharp.Kernel.Services.IDispatcherSite) — its **marshalling** surface. Every call into the service is marshalled onto it. It is what the generated `[ServiceRequest]`/`[ServiceEvent]` plumbing targets. |
+| `Scheduler` | *(protected)* the **same** site seen as an [`IScheduler`](#/api/type/SimulaSharp.Kernel.Services.IScheduler) — its sim-time facet. Arm long-running events here in `Configure()`. Only the service author sees it; callers only ever get `Site`. |
 | `Configure()` / `Dispose()` | Same hooks as a model — setup after wiring, deinit after the site stops. |
+
+> **Why two facets of one site?** `Site` (an `IDispatcherSite`) exposes only *marshalling* — `Post`/`Inject*` — and
+> the lifecycle the simulator drives; `Scheduler` (an `IScheduler`) adds the sim-time queue and is **protected**, so a
+> caller holding a service can marshal work to it but can neither schedule on nor start/stop its site. This is the same
+> capability-segregation split described in [sites & dispatch](#/guide/sites-and-dispatch).
 
 Like a model that uses codegen, a service **must be `partial`** — the
 [`ServiceGenerator`](#/api/type/SimulaSharp.CodeGen.ServiceGenerator) weaves the interaction plumbing into it. The
@@ -105,16 +111,17 @@ public partial class DemoService : ServiceBase
 For `[ServiceEvent("RangeUpdated", typeof(double))]` the generator emits:
 
 ```csharp
-public void RegisterCallback_RangeUpdated(IScheduler scheduler, Action<double> callback);  // subscribers call this
-protected void Trigger_RangeUpdated(double value);                                          // the service calls this
+public void RegisterCallback_RangeUpdated(IDispatcher dispatcher, Action<double> callback);  // subscribers call this
+protected void Trigger_RangeUpdated(double value);                                           // the service calls this
 ```
 
-- **`RegisterCallback_<Name>`** is **public** — a subscriber calls it, **passing its own scheduler**. The channel
-  remembers `(subscriberScheduler, callback)`. That is how delivery lands on the *subscriber's* site.
+- **`RegisterCallback_<Name>`** is **public** — a subscriber calls it, **passing its own dispatcher**. A model just
+  passes its `Scheduler` (an `IScheduler` *is* an [`IDispatcher`](#/api/type/SimulaSharp.Kernel.Services.IDispatcher)).
+  The channel remembers `(subscriberDispatcher, callback)`. That is how delivery lands on the *subscriber's* site.
 - **`Trigger_<Name>`** is **protected** — the service calls it to publish. It `Post`s each subscriber's callback onto
-  *that subscriber's* site, fire-and-forget.
+  *that subscriber's* dispatcher, fire-and-forget.
 - Payload-less events (`[ServiceEvent("Tick")]`) generate the argument-free forms:
-  `RegisterCallback_Tick(IScheduler, Action)` and `Trigger_Tick()`.
+  `RegisterCallback_Tick(IDispatcher, Action)` and `Trigger_Tick()`.
 
 Events are **always fire-and-forget** — they carry no result. A result would force synchronous cross-thread execution,
 which the design does not allow; if a model needs to send something back, it uses a `[ServiceRequest]` instead.
@@ -163,15 +170,17 @@ public partial class DemoService : ServiceBase
 The generator emits public callers that marshal onto the service's own site:
 
 ```csharp
-public Task Register(int unitId) => Scheduler.InjectVoidAsync(() => Handle_Register(unitId));
-public Task<int> Allocate(int want) => Scheduler.InjectAsync(() => Handle_Allocate(want));
+public Task Register(int unitId) => Site.InjectVoidAsync(() => Handle_Register(unitId));
+public Task<int> Allocate(int want) => Site.InjectAsync(() => Handle_Allocate(want));
 ```
 
 - The handler may take **at most one argument** and may **return a value**.
 - A `void` handler → a `Task`-returning caller (via `InjectVoidAsync`); a value handler → a `Task<T>`-returning caller
   (via `InjectAsync`).
-- The caller marshals onto **`Scheduler`** — the *service's* own site — so the handler always runs on the service
-  thread regardless of which model called it. No locks in the handler.
+- The caller marshals onto **`Site`** — the *service's* own site (via the common `IDispatcher` facet) — so the handler
+  always runs on the service thread regardless of which model called it. No locks in the handler. Marshalling through
+  `Site` (not the sim-time `Scheduler`) is exactly why the same plumbing works on a
+  [loosely-coupled service](#loosely-coupled-io-services) too, whose site has no sim-time queue.
 
 ### A `[ServiceRequest]` round-trip
 
@@ -183,7 +192,7 @@ sequenceDiagram
   participant SvcSite as Service site (thread S)
   participant H as Handle_Allocate
   M->>Caller: await service.Allocate(8)
-  Caller->>SvcSite: Scheduler.InjectAsync(() => Handle_Allocate(8))
+  Caller->>SvcSite: Site.InjectAsync(() => Handle_Allocate(8))
   Note over SvcSite: runs on the service thread during its next drain
   SvcSite->>H: Handle_Allocate(8)
   H-->>SvcSite: returns 8
@@ -254,6 +263,89 @@ Two directions, two mechanisms, both always cross-thread:
 > **Consequence for design.** A service centralizes shared state on one thread, so it is a natural serialization point
 > — and a natural **bottleneck** if every model hammers it synchronously. Prefer fire-and-forget events for broadcast
 > ("something changed"), and reserve `[ServiceRequest]` round-trips for when a model genuinely needs an answer back.
+
+## Loosely-coupled (I/O) services
+
+A `ServiceBase` lives on a **sim-paced** SimSite: when the clock pauses, its site parks, and its scheduled work stops
+with the sim. That is exactly right for a service that models the *simulated* world. But some services own a link to the
+*outside* world — a socket to real hardware, an out-of-process feed, a hardware-in-the-loop debug probe — that must keep
+running **outside** simulation time and act on the run's **start/stop** (e.g. an EGSE that halts and unhalts a real
+on-board computer in lockstep with the sim). Parking that on a clock pause would freeze the very link you use to *drive*
+the pause.
+
+For those, derive [`LooselyCoupledServiceBase`](#/api/type/SimulaSharp.Kernel.Model.LooselyCoupledServiceBase). It owns a
+[`LooselyCoupledSite`](#/api/type/SimulaSharp.Kernel.Services.LooselyCoupledSite) — a dedicated thread that is **never
+gated by the clock** and **never parks** on pause. See [sites & dispatch](#/guide/sites-and-dispatch) for the site model.
+
+```mermaid
+flowchart LR
+  subgraph paced ["ServiceBase → SimSite (sim-paced)"]
+    S1["clock pauses ⇒ site parks<br/>work stops with the sim"]
+  end
+  subgraph ungated ["LooselyCoupledServiceBase → LooselyCoupledSite (clock-ungated)"]
+    S2["clock pauses ⇒ loop keeps running<br/>you decide what start/stop means"]
+  end
+  classDef a fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+  classDef b fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
+  class S1 a;
+  class S2 b;
+```
+
+### The author contract
+
+Unlike a sim-paced service (which *arms* work and returns), a loosely-coupled service **owns its thread's loop**. You
+implement three members:
+
+| Member | What it is |
+|---|---|
+| `protected abstract Task _EntryPoint()` | The thread's main loop. Runs on the site's dedicated thread under a single-thread context, so every `await` resumes **on that same thread** — the socket/inbox state you touch stays single-threaded, no locks. |
+| `protected void ServiceInbox()` | Runs all currently-queued marshalled work (this service's `[ServiceRequest]`/`[ServiceEvent]` deliveries) **inline**, at the point in your loop you choose. Nothing is auto-drained. |
+| `protected Task<bool> WaitRunning()` | `await` it to gate on the run: yields **`false`** when the clock is running (proceed), **`true`** when the service is being disposed (end-of-life → break the loop and tear down). Completes immediately if already running/stopping; otherwise parks until the clock starts or shutdown is requested. |
+
+Halt/unhalt is expressed *in the loop* — the rising edge (`WaitRunning` returned `false`) and the falling edge
+(`TimeKeeper.IsRunning` goes false) — so there are no separate `OnStarted`/`OnStopped` hooks to keep in sync. The
+canonical shape, as an EGSE would write it:
+
+```csharp
+using SimulaSharp.Kernel.Logging;
+using SimulaSharp.Kernel.Model;
+using SimulaSharp.Kernel.Services;
+
+public partial class Egse : LooselyCoupledServiceBase
+{
+    public Egse(IClock c, ILogger l) : base(c, l, name: "egse") { }
+
+    protected override async Task _EntryPoint()
+    {
+        Connect(); Identify(); Halt();                  // setup — the OBC is halted
+        while (!await WaitRunning())                     // false = clock running; true = disposing → exit
+        {
+            Unhalt();                                    // rising edge — hardware in lockstep with the sim
+            while (TimeKeeper.IsRunning && !Stopping)
+            {
+                PumpLink();                              // service the external link
+                ServiceInbox();                          // run any marshalled requests/events
+                await Task.Delay(1);                     // yield; resumes on THIS thread
+            }
+            Halt();                                      // falling edge — freeze with the sim
+        }
+        Close();                                         // end-of-life teardown
+    }
+}
+```
+
+- **`Site`** is still an `IDispatcherSite`, so the **same** `[ServiceEvent]`/`[ServiceRequest]`/`[ServiceRef]` plumbing
+  works unchanged — a model marshals a request in exactly as it would to a sim-paced service; it just runs when your loop
+  calls `ServiceInbox()`. There is **no `Scheduler`**: a loosely-coupled site has no sim-time queue.
+- **`Stopping`** (a `bool`) flips true when teardown is requested — check it in inner loops so they exit promptly.
+- The **assembly declares it like any other service** (a `Services:` entry); the generator routes it to the clock-ungated
+  registration automatically by recognising the base type. Nothing special in the YAML.
+
+> **When to reach for it.** Only when a service owns I/O that genuinely lives *outside* sim time and must react to the
+> run starting/stopping — real hardware links, HIL probes, external feeds. Everything that models the simulated world —
+> including a poll-style request/response device — stays an ordinary sim-paced `ServiceBase`. This is the one place a
+> blocking-ish external loop is legitimate, because it runs on its **own** thread, never a SimSite; see
+> [pitfalls](#/guide/pitfalls).
 
 ## Where to go next
 

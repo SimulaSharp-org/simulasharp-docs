@@ -99,12 +99,15 @@
             <list type="bullet">
               <item>For each <c>[ServiceEvent("X", argType?)]</c> — a fire-and-forget publish
               point — a backing <c>ServiceEventChannel</c>, a public
-              <c>RegisterCallback_X(scheduler, callback)</c> for subscribers, and a protected
-              <c>Trigger_X(...)</c> the service calls to publish (Posts each callback onto its
-              subscriber's site). Returning events (a result type) are not yet generated.</item>
+              <c>RegisterCallback_X(dispatcher, callback)</c> for subscribers (the subscriber
+              passes its site's <c>IDispatcher</c>), and a protected <c>Trigger_X(...)</c> the
+              service calls to publish (Posts each callback onto its subscriber's dispatcher).
+              Returning events (a result type) are not yet generated.</item>
               <item>For each <c>[ServiceRequest]</c> method <c>Handle_X(..)</c> — a public
-              <c>X(..)</c> caller that marshals the call onto the service's own site and returns
-              an awaitable (<c>Task</c>/<c>Task&lt;T&gt;</c>).</item>
+              <c>X(..)</c> caller that marshals the call onto the service's own site
+              (<c>Site.Inject*</c>, the common <c>IDispatcher</c> facet, so it works on both the
+              sim-paced and loosely-coupled service bases) and returns an awaitable
+              (<c>Task</c>/<c>Task&lt;T&gt;</c>).</item>
             </list>
             </summary>
         </member>
@@ -138,6 +141,9 @@
         </member>
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.EmitModel(System.Text.StringBuilder,SimulaSharp.CodeGen.SimulatorGenerator.ModelNode,System.String,System.String,SimulaSharp.CodeGen.SimulatorGenerator.EmitCtx)">
             <summary>Emits construction + config + containment for a model node; returns its var. Records deps.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.DerivesFrom(Microsoft.CodeAnalysis.INamedTypeSymbol,Microsoft.CodeAnalysis.INamedTypeSymbol)">
+            <summary>True if <paramref name="type"/> (or an ancestor) is <paramref name="baseType"/>. False if either is null.</summary>
         </member>
     </members>
 </doc>
