@@ -145,5 +145,12 @@
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.DerivesFrom(Microsoft.CodeAnalysis.INamedTypeSymbol,Microsoft.CodeAnalysis.INamedTypeSymbol)">
             <summary>True if <paramref name="type"/> (or an ancestor) is <paramref name="baseType"/>. False if either is null.</summary>
         </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Validator.CheckDep(Microsoft.CodeAnalysis.INamedTypeSymbol,System.String,System.String,System.Collections.Generic.Dictionary{System.String,Microsoft.CodeAnalysis.INamedTypeSymbol})">
+            <summary>
+            Validates one <c>[ServiceRef]</c> dependency on <paramref name="holderType"/> (a model or a
+            service): the member exists and is <c>[ServiceRef]</c>, the named service is known, and it is
+            assignable to the member. Shared by model deps and service→service deps.
+            </summary>
+        </member>
     </members>
 </doc>

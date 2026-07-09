@@ -231,6 +231,29 @@ public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
   generated interaction surface directly: `RegisterCallback_*` to subscribe to events, and the `X(..)` callers to make
   requests. The `[ServiceRef]` must be settable because the simulator assigns it during wiring.
 
+### Services can depend on services — even cyclically
+
+A `[ServiceRef]` is not a model-only member: **a service can hold one to another service**, declared with a `Deps`
+block on its own `Services:` entry, exactly as a model does. Because every model↔service and service↔service call is
+already cross-thread and marshalled, a service simply calls its dependency's generated surface like any other caller.
+
+**Cycles are allowed** — service A may reference B while B references A. The simulator constructs *every* service before
+it binds *any* dependency, so a cycle resolves cleanly by setter injection; neither constructor needs the other to exist
+yet. Do the actual wiring-dependent work (subscribing to the peer's events, first requests) in `Configure()`, which runs
+only after every ref is bound.
+
+```yaml
+Services:
+  - Name: A
+    Type: Demo.SvcA
+    Deps:
+      - Peer: B        # SvcA.[ServiceRef] Peer ← service B
+  - Name: B
+    Type: Demo.SvcB
+    Deps:
+      - Peer: A        # SvcB.[ServiceRef] Peer ← service A  (the cycle)
+```
+
 ## The whole picture
 
 ```mermaid
@@ -258,7 +281,7 @@ Two directions, two mechanisms, both always cross-thread:
 |---|---|---|---|---|
 | Service → models | `[ServiceEvent]` | `Trigger_X` (protected) · `RegisterCallback_X` (public) | each **subscriber's** site | no (fire-and-forget) |
 | Models → service | `[ServiceRequest]` | `X(..)` caller (public) over `Handle_X` | the **service's** site | optional (`Task`/`Task<T>`) |
-| Model gets handle | `[ServiceRef]` | assembly binds the member by name | — | — |
+| Model **or service** gets handle | `[ServiceRef]` | assembly binds the member by name (service→service allowed, incl. cycles) | — | — |
 
 > **Consequence for design.** A service centralizes shared state on one thread, so it is a natural serialization point
 > — and a natural **bottleneck** if every model hammers it synchronously. Prefer fire-and-forget events for broadcast

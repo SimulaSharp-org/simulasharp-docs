@@ -90,9 +90,9 @@ The attributes that shape a **service**'s interaction surface. The generator own
 
 | Attribute | Target | Parameters | Effect |
 |---|---|---|---|
-| [`ServiceEventAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.ServiceEventAttribute) | **class** (repeatable) | `Name`, `argType` (`Type?`) | Declares a **publish point** (service → models). Emits `Trigger_<Name>(arg)` (service publishes) and `RegisterCallback_<Name>(scheduler, callback)` (a model subscribes; delivery marshalled onto the subscriber's site). Fire-and-forget, no result. |
+| [`ServiceEventAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.ServiceEventAttribute) | **class** (repeatable) | `Name`, `argType` (`Type?`) | Declares a **publish point** (service → models). Emits `Trigger_<Name>(arg)` (service publishes) and `RegisterCallback_<Name>(dispatcher, callback)` (a subscriber passes its site's `IDispatcher`; delivery marshalled onto that site). Fire-and-forget, no result. |
 | [`ServiceRequestAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.ServiceRequestAttribute) | method `Handle_X` | `name?` (def = strip `Handle_`) | Declares an **entry point** (models → service). You write `Handle_<Name>` (≤1 arg, optional result); the generator emits the public caller that marshals onto the service's site. |
-| [`ServiceRefAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.ServiceRefAttribute) | settable field/property on a model | *(none)* | Marks a **service dependency**. The assembly's `Deps` block binds it by service name; the model then calls the service's generated surface. |
+| [`ServiceRefAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.ServiceRefAttribute) | settable field/property on a **model or service** | *(none)* | Marks a **service dependency**. The assembly's `Deps` block binds it by service name; the holder then calls the service's generated surface. A service may depend on a service, including **cyclically**. |
 
 ```csharp
 [ServiceEvent("TargetUpdated", typeof(TrackId))]   // service → models

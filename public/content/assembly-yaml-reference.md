@@ -58,9 +58,10 @@ unique and are what `Refs` target.
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
-| `Name` | **yes** | — | Instance name; referenced from a model's `Deps`. |
+| `Name` | **yes** | — | Instance name; referenced from a model's or another service's `Deps`. |
 | `Type` | **yes** | — | Fully-qualified type; must implement `IService` and have a `(IClock, ILogger)` ctor. |
 | `Config` | no | *(none)* | Map of `[Config]` key → scalar for the service. |
+| `Deps` | no | *(none)* | **Service→service deps.** Same shape as a model's `Deps` — a list of `{ <serviceRefMember>: serviceName }` binding a `[ServiceRef]` member to another service. Cycles are allowed (A→B and B→A): every service is constructed before any dep is bound. |
 
 ## `Sites[]`
 
