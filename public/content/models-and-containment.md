@@ -61,7 +61,7 @@ per-frame callback.
 sequenceDiagram
   participant Sim as Generated simulator
   participant M as Model
-  Note over Sim,M: Initialize — construct tree, wire refs, apply config
+  Note over Sim,M: construction — build tree, wire refs, apply params
   Sim->>M: Configure()
   Note over M: arm scheduled events here
   Note over Sim,M: Start — sites + clock run; events fire on the site thread
@@ -114,14 +114,14 @@ surface.
 
 ## Models that use codegen must be `partial`
 
-Any model that touches a code-generated attribute — a knob, a `[Config]`, a `Reference<T>` (whose accessor is
+Any model that touches a code-generated attribute — a knob, a `[Parameter]`, a `Reference<T>` (whose accessor is
 generated) — must be declared `partial`, so the generator can weave its half into your class. A model with *no*
 generated members can be `sealed` with no `partial`. When in doubt, mark it `partial`; it costs nothing.
 
 ```csharp
 public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    [Config] public int Capacity { get; set; }              // generated config binding
+    [Parameter(0)] public int Capacity { get; set; }              // generated config binding
     public Container<Unit> Units { get; } = new();          // containment (below)
 }
 ```
@@ -241,7 +241,7 @@ public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
 
 public partial class Unit(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    [Config] public double Rate { get; set; }
+    [Parameter(0.0)] public double Rate { get; set; }
     public void Recompute() { /* runs on the same thread as Plant */ }
 }
 ```

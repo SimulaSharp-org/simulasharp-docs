@@ -124,7 +124,7 @@ At build time the generator reads your annotated models and each `<SimAssembly>`
 ```mermaid
 flowchart LR
   subgraph inputs["your project"]
-    M["Model classes<br/>[Knob] [Plottable] [Config]"]
+    M["Model classes<br/>[Knob] [Plottable] [Parameter]"]
     Y["Demo.yaml<br/>(&lt;SimAssembly&gt;)"]
   end
   T["SimulaSharp.CodeGen.targets<br/>SimAssembly → AdditionalFiles (IsSimAssembly)"]

@@ -33,7 +33,7 @@ flowchart TB
   subgraph AUTHOR["What you write"]
     M["Models — C# classes<br/>state + behaviour"]
     S["Services — shared capabilities"]
-    K["[Knob] / [Plottable] / [Config]<br/>annotations"]
+    K["[Knob] / [Plottable] / [Parameter]<br/>annotations"]
     Y["assembly.yaml<br/>the topology"]
   end
   subgraph GEN["What the generator builds"]

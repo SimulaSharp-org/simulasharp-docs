@@ -102,7 +102,6 @@ with a parameterless constructor. From a test or a throwaway host, walk the
 ```csharp
 using var sim = new HelloSimulator();
 
-sim.Initialize();               // build the tree, wire, apply config
 sim.Configure();                // run each model's Configure() — arms the tick
 sim.Start();                    // bring the sites + clock up
 
@@ -116,7 +115,7 @@ sequenceDiagram
   participant H as Host
   participant Sim as HelloSimulator
   participant M as Heartbeat (Main site)
-  H->>Sim: Initialize()
+  H->>Sim: new HelloSimulator()  (assembles)
   H->>Sim: Configure()
   Sim->>M: Configure() → AddPeriodicEvent(Tick, 1 s)
   H->>Sim: Start() (sites + clock)

@@ -17,7 +17,7 @@ flowchart LR
 
 ## ① Edit
 
-Change a model (add state, behaviour, a `[Knob]`/`[Plottable]`/`[Config]`), or change the
+Change a model (add state, behaviour, a `[Knob]`/`[Plottable]`/`[Parameter]`), or change the
 **[assembly](#/guide/the-assembly)** (add a site, a model, a reference, a service dependency). These are the only
 two things you author — see the **[authoring model](#/guide/authoring-model)**.
 
@@ -34,7 +34,7 @@ broken wiring. (Full table: **[Assembly YAML reference](#/guide/assembly-yaml-re
 
 ## ③ Run
 
-Construct the generated simulator and drive it — `Initialize()` → `Configure()` → `Start()`, or `Clock.RunFor(…)`
+Construct the generated simulator (which assembles it) and drive it — `Configure()` → `Start()`, or `Clock.RunFor(…)`
 for a bounded span. Watch the knobs, plottables, and log sink. Details in
 **[Build, run & test](#/guide/build-run-test)** and **[Simulator lifecycle](#/guide/simulator-lifecycle)**.
 

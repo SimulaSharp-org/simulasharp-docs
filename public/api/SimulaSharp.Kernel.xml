@@ -4,36 +4,6 @@
         <name>SimulaSharp.Kernel</name>
     </assembly>
     <members>
-        <member name="T:SimulaSharp.Kernel.Attributes.ConfigAttribute">
-            <summary>
-            Marks a public field or property to be populated from this instance's
-            <c>Config</c> block in the assembly YAML. The source generator collects every
-            <see cref="T:SimulaSharp.Kernel.Attributes.ConfigAttribute"/>-marked member so the framework can bind (and
-            validate) the weakly-typed YAML values into strongly-typed members before
-            <c>Configure()</c> runs.
-            </summary>
-        </member>
-        <member name="M:SimulaSharp.Kernel.Attributes.ConfigAttribute.#ctor(System.String)">
-            <summary>
-            Marks a public field or property to be populated from this instance's
-            <c>Config</c> block in the assembly YAML. The source generator collects every
-            <see cref="T:SimulaSharp.Kernel.Attributes.ConfigAttribute"/>-marked member so the framework can bind (and
-            validate) the weakly-typed YAML values into strongly-typed members before
-            <c>Configure()</c> runs.
-            </summary>
-        </member>
-        <member name="P:SimulaSharp.Kernel.Attributes.ConfigAttribute.Key">
-            <summary>
-            The config key to read from the assembly. Defaults to the member's own name
-            when not given.
-            </summary>
-        </member>
-        <member name="P:SimulaSharp.Kernel.Attributes.ConfigAttribute.Required">
-            <summary>
-            Whether the assembly must supply a value. When true, a missing key is an
-            error; when false, the member keeps its existing/default value. Defaults to true.
-            </summary>
-        </member>
         <member name="T:SimulaSharp.Kernel.Attributes.KnobAttribute">
             <summary>
             Base for attributes that decorate model members to be exposed as knobs in the UI.
@@ -196,6 +166,53 @@
         </member>
         <member name="P:SimulaSharp.Kernel.Attributes.FloatKnobAttribute.DecimalPlaces">
             <summary>Number of decimal places shown/accepted.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.ParameterAttribute">
+            <summary>
+            Marks a public field or property as a <b>parameter</b>: a build-time tunable. It is populated from this
+            instance's <c>Config</c> block in the assembly YAML and can be overridden programmatically via
+            <c>ISimulator.SetParam</c> <b>before</b> <c>Configure()</c> runs. The source generator collects every
+            <see cref="T:SimulaSharp.Kernel.Attributes.ParameterAttribute"/>-marked member so the framework can bind the (weakly-typed) YAML value into
+            the strongly-typed member and expose it through <c>ISimulator.GetParams()</c>.
+            <para>
+            The <b>default</b> — applied when the assembly omits this parameter — is supplied in the attribute
+            constructor: <c>[Parameter(1.5)]</c>, <c>[Parameter("")]</c>, <c>[Parameter(false)]</c>. Parameters are
+            therefore <b>optional by default</b>; set <see cref="P:SimulaSharp.Kernel.Attributes.ParameterAttribute.Required"/> to force the assembly to provide a value.
+            A parameter member must be a value/constant type (a number, <c>bool</c>, <c>enum</c>, <c>char</c> or
+            <c>string</c>), and it may <em>also</em> carry <c>[Knob]</c> and/or <c>[Plottable]</c>.
+            </para>
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.ParameterAttribute.#ctor(System.Object)">
+            <summary>
+            Marks a public field or property as a <b>parameter</b>: a build-time tunable. It is populated from this
+            instance's <c>Config</c> block in the assembly YAML and can be overridden programmatically via
+            <c>ISimulator.SetParam</c> <b>before</b> <c>Configure()</c> runs. The source generator collects every
+            <see cref="T:SimulaSharp.Kernel.Attributes.ParameterAttribute"/>-marked member so the framework can bind the (weakly-typed) YAML value into
+            the strongly-typed member and expose it through <c>ISimulator.GetParams()</c>.
+            <para>
+            The <b>default</b> — applied when the assembly omits this parameter — is supplied in the attribute
+            constructor: <c>[Parameter(1.5)]</c>, <c>[Parameter("")]</c>, <c>[Parameter(false)]</c>. Parameters are
+            therefore <b>optional by default</b>; set <see cref="P:SimulaSharp.Kernel.Attributes.ParameterAttribute.Required"/> to force the assembly to provide a value.
+            A parameter member must be a value/constant type (a number, <c>bool</c>, <c>enum</c>, <c>char</c> or
+            <c>string</c>), and it may <em>also</em> carry <c>[Knob]</c> and/or <c>[Plottable]</c>.
+            </para>
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.ParameterAttribute.Default">
+            <summary>
+            The value applied when the assembly omits this parameter (given as the constructor argument). Null
+            means no default was supplied — the member keeps its own initializer/default, unless <see cref="P:SimulaSharp.Kernel.Attributes.ParameterAttribute.Required"/>.
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.ParameterAttribute.Key">
+            <summary>The assembly <c>Config</c> key to read. Defaults to the member's own name when not given.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.ParameterAttribute.Required">
+            <summary>
+            Whether the assembly <b>must</b> supply a value. When true, a missing key is an error; when false
+            (the default), a missing key falls back to <see cref="P:SimulaSharp.Kernel.Attributes.ParameterAttribute.Default"/> (or the member's own default).
+            </summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Attributes.PlottableAttribute">
             <summary>
@@ -915,6 +932,54 @@
         <member name="M:SimulaSharp.Kernel.Model.ServiceBase.Dispose">
             <summary>Deinitialization hook. Override to release resources; the site is disposed by the simulator.</summary>
         </member>
+        <member name="T:SimulaSharp.Kernel.Parameters.IParameterProvider">
+            <summary>
+            Implemented (explicitly, by the source generator) by models/services that declare <c>[Parameter]</c>
+            members. The generated simulator calls <see cref="M:SimulaSharp.Kernel.Parameters.IParameterProvider.CollectParameters(System.String,System.Collections.Generic.ICollection{SimulaSharp.Kernel.Parameters.ParameterInfo})"/> while assembling (in its
+            constructor), passing the instance's full dotted path, so it can build its <see cref="T:SimulaSharp.Kernel.Parameters.ParameterInfo"/>
+            binders (stamped with that path) and add them to the simulator's parameter list.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Parameters.IParameterProvider.CollectParameters(System.String,System.Collections.Generic.ICollection{SimulaSharp.Kernel.Parameters.ParameterInfo})">
+            <summary>Builds this instance's parameters (paths prefixed with <paramref name="pathPrefix"/>) into <paramref name="into"/>.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Parameters.ParameterInfo">
+            <summary>
+            A single <b>build-time parameter</b> on a model/service instance — the host's unit of pre-run tuning. It is
+            a thin binder: metadata plus boxed read/write delegates the source generator supplies. Parameters are
+            discovered when the simulator is assembled (its constructor) and can be read and overridden via
+            <c>ISimulator.GetParams()</c> / <c>ISimulator.SetParam(...)</c> <b>before</b> <c>Configure()</c> — after which
+            the value is fixed for the run.
+            <para>
+            Unlike a <see cref="T:SimulaSharp.Kernel.Knobs.Knob"/> (a runtime operator control), a parameter is set once, before the sim
+            threads start, so no cross-thread synchronization is needed; the delegates just read/write the member.
+            </para>
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Parameters.ParameterInfo.Path">
+            <summary>Full dotted instance path plus the parameter name, e.g. <c>SimName.Path.To.Model.Rate</c>.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Parameters.ParameterInfo.Name">
+            <summary>The parameter's member name (e.g. <c>Rate</c>).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Parameters.ParameterInfo.ValueType">
+            <summary>The value's CLR type name (e.g. <c>System.Double</c>).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Parameters.ParameterInfo.ReadBoxed">
+            <summary>Reads the current value, boxed.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Parameters.ParameterInfo.WriteBoxed">
+            <summary>Writes a new value (unboxed to the member's type inside).</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Parameters.ParameterInfo.Default">
+            <summary>The declared default (from the attribute), boxed; null when the parameter has no default.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Parameters.ParameterInfo.Read">
+            <summary>Reads the current value (boxed).</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Parameters.ParameterInfo.Write(System.Object)">
+            <summary>Writes a new value (boxed); the generated delegate unboxes to the member's type.</summary>
+        </member>
         <member name="T:SimulaSharp.Kernel.Plotting.IPlottableProvider">
             <summary>
             Implemented (explicitly, by the source generator) by models that declare
@@ -1337,9 +1402,9 @@
             <summary>
             The control endpoint for a whole simulation. A generated
             <c>&lt;SimName&gt;Simulator</c> implements this (over <c>SimulatorBase</c>). The
-            driver (MMI or CLI) walks the lifecycle: register any log sinks, then
-            <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Initialize"/> (build the topology), <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Configure"/> (run each
-            model's setup), then <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Start"/>/<see cref="M:SimulaSharp.Kernel.Services.ISimulator.Stop"/>.
+            driver (MMI or CLI) walks the lifecycle: constructing the simulator <b>assembles</b> the topology, then
+            register any log sinks, optionally tune parameters (<see cref="M:SimulaSharp.Kernel.Services.ISimulator.GetParams"/>/<see cref="M:SimulaSharp.Kernel.Services.ISimulator.SetParam(SimulaSharp.Kernel.Parameters.ParameterInfo,System.Object)"/>), run
+            <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Configure"/> (each model's setup), then <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Start"/>/<see cref="M:SimulaSharp.Kernel.Services.ISimulator.Stop"/>.
             <para>Single-use: there is no reset — <see cref="M:System.IDisposable.Dispose"/> tears it down.</para>
             </summary>
         </member>
@@ -1359,18 +1424,18 @@
             </summary>
         </member>
         <member name="P:SimulaSharp.Kernel.Services.ISimulator.Knobs">
-            <summary>The discovered knobs across every model instance (populated by <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Initialize"/>).</summary>
+            <summary>The discovered knobs across every model instance (populated by <see cref="!:Initialize"/>).</summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.ISimulator.RegisterKnobChannel(SimulaSharp.Kernel.Knobs.IKnobChannel)">
             <summary>
             Registers a knob channel (the MMI). It receives the discovered knobs and a push
-            on every value change. May be registered before or after <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Initialize"/>.
+            on every value change. May be registered before or after <see cref="!:Initialize"/>.
             </summary>
         </member>
         <member name="P:SimulaSharp.Kernel.Services.ISimulator.Plottables">
             <summary>
             The discovered plot-telemetry points across every model instance (populated by
-            <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Initialize"/>), keyed by full dotted instance path. Sample them in one
+            <see cref="!:Initialize"/>), keyed by full dotted instance path. Sample them in one
             mission-time-stamped sweep via <see cref="M:SimulaSharp.Kernel.Services.ISimulator.SamplePlottables"/>.
             </summary>
         </member>
@@ -1381,11 +1446,22 @@
             </summary>
             <returns>The mission time (µs) of the sweep and a path → value snapshot.</returns>
         </member>
-        <member name="M:SimulaSharp.Kernel.Services.ISimulator.Initialize">
-            <summary>Builds the topology: constructs the SimSites and model tree, wires references, fills config.</summary>
+        <member name="M:SimulaSharp.Kernel.Services.ISimulator.GetParams">
+            <summary>
+            The discovered build-time parameters across every model and service instance (populated when the
+            simulator is constructed), keyed by full dotted instance path. Read a value, or override it with
+            <see cref="M:SimulaSharp.Kernel.Services.ISimulator.SetParam(SimulaSharp.Kernel.Parameters.ParameterInfo,System.Object)"/> — but only <b>before</b> <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Configure"/>.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.ISimulator.SetParam(SimulaSharp.Kernel.Parameters.ParameterInfo,System.Object)">
+            <summary>
+            Overrides a parameter's value before the run is configured. Throws if called after
+            <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Configure"/> (parameters are fixed for the run). <paramref name="value"/> must be the
+            parameter's declared type (boxed).
+            </summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.ISimulator.Configure">
-            <summary>Runs every model's and service's <c>Configure()</c> depth-first. Call after <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Initialize"/>.</summary>
+            <summary>Runs every model's and service's <c>Configure()</c> depth-first. Call after tuning parameters.</summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.ISimulator.Start">
             <summary>Starts or resumes the run.</summary>
@@ -1771,9 +1847,11 @@
             SimSites and the constructed models/services, fans log entries out to the
             registered sinks, and implements the <see cref="T:SimulaSharp.Kernel.Services.ISimulator"/> lifecycle.
             <para>
-            The generated subclass supplies the topology by implementing
-            <see cref="M:SimulaSharp.Kernel.Services.SimulatorBase.OnInitialize"/> with the protected building blocks below (create sites,
-            mint loggers, construct and register components, wire references, fill config).
+            The generated subclass supplies the topology <b>in its constructor</b>, using the protected building blocks
+            below (create sites, mint loggers, construct and register components, apply parameters, wire references,
+            discover knobs/plottables/parameters), then calls <see cref="M:SimulaSharp.Kernel.Services.SimulatorBase.OnAssembled"/>. So a freshly-<c>new</c>'d
+            simulator is already assembled — the host may read/override parameters via <see cref="M:SimulaSharp.Kernel.Services.SimulatorBase.GetParams"/>/
+            <see cref="M:SimulaSharp.Kernel.Services.SimulatorBase.SetParam(SimulaSharp.Kernel.Parameters.ParameterInfo,System.Object)"/>, then <see cref="M:SimulaSharp.Kernel.Services.SimulatorBase.Configure"/> and <see cref="M:SimulaSharp.Kernel.Services.SimulatorBase.Start"/>.
             </para>
             </summary>
         </member>
@@ -1793,6 +1871,12 @@
             <inheritdoc/>
         </member>
         <member name="P:SimulaSharp.Kernel.Services.SimulatorBase.Plottables">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.GetParams">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.SetParam(SimulaSharp.Kernel.Parameters.ParameterInfo,System.Object)">
             <inheritdoc/>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.RegisterLogSink(SimulaSharp.Kernel.Logging.ILogSink)">
@@ -1816,6 +1900,10 @@
         <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.CollectPlottablesFrom(SimulaSharp.Kernel.Model.IModel,System.String)">
             <summary>Collects a model's plottables (if any) into the simulation's map, keyed by full path.</summary>
         </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.CollectParametersFrom(System.Object,System.String)">
+            <summary>Collects an instance's parameters (if any) into the simulation's list, stamped with its full path.
+            Works for both models and services (either may declare <c>[Parameter]</c> members).</summary>
+        </member>
         <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.SamplePlottables">
             <summary>
             Samples every plottable in one sweep, stamped with a single mission time
@@ -1837,14 +1925,13 @@
             disposed with the run) and its <c>Configure</c>/<c>Dispose</c> hooks.
             </summary>
         </member>
-        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.OnInitialize">
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.OnAssembled">
             <summary>
-            Implemented by the generated subclass: construct the SimSites and model tree,
-            wire references, and fill config values, using the protected building blocks.
+            Called by the generated constructor once the topology is fully assembled (sites, model/service tree,
+            applied parameters, wired references, discovered knobs/plottables/parameters). Marks the simulator
+            ready and hands any registered knob channels the discovered knobs. After this, the host may tune
+            parameters (<see cref="M:SimulaSharp.Kernel.Services.SimulatorBase.GetParams"/>/<see cref="M:SimulaSharp.Kernel.Services.SimulatorBase.SetParam(SimulaSharp.Kernel.Parameters.ParameterInfo,System.Object)"/>) and then <see cref="M:SimulaSharp.Kernel.Services.SimulatorBase.Configure"/>.
             </summary>
-        </member>
-        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.Initialize">
-            <inheritdoc/>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.Configure">
             <inheritdoc/>
@@ -1877,7 +1964,7 @@
         <member name="F:SimulaSharp.Kernel.Services.SimulatorState.Initialized">
             <summary>
             Models constructed and their containers/references assembled, then config
-            values applied — the result of <see cref="M:SimulaSharp.Kernel.Services.ISimulator.Initialize"/>.
+            values applied — the result of <see cref="!:ISimulator.Initialize"/>.
             </summary>
         </member>
         <member name="F:SimulaSharp.Kernel.Services.SimulatorState.Configured">

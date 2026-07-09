@@ -95,7 +95,7 @@ namespace Ctrl;
 
 public partial class Controller(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    [Config] public double Target { get; set; }
+    [Parameter(5.0)] public double Target { get; set; }
     public Reference<Plant> Plant { get; } = new();
     // generator adds:  protected ReferenceAccessor<PlantRef> _Plant;
 
@@ -175,7 +175,6 @@ Running is the usual lifecycle; the two sites run in parallel and the reference 
 
 ```csharp
 using var sim = new LoopSimulator();
-sim.Initialize();
 sim.Configure();
 sim.Start();
 sim.Clock.RunFor(5_000_000);     // ~5 s: the level converges toward Target

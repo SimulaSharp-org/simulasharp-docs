@@ -8,7 +8,7 @@ The vocabulary of SimulaSharp, alphabetical. Each entry links to the chapter tha
 | **assembly** | The YAML file that names the sites, services, and model tree and wires them together; the generator turns it into the `<Name>Simulator`. See [the assembly](#/guide/the-assembly) and the [YAML reference](#/guide/assembly-yaml-reference). |
 | **caller-site dispatch** | The generated `<Type>Ref` accessor's behaviour: a call from the same site runs directly (lock-free); a cross-site call is marshalled onto the target's thread. See [associations](#/guide/associations). |
 | **collectible ALC** | A collectible `AssemblyLoadContext` — the .NET mechanism the host uses to load a packed simulator and later **unload/reload** it without restarting. See [packing & hosting](#/guide/packing-and-hosting). |
-| **config** | An assembly-supplied value bound into a `[Config]` member before `Configure()` runs. See [configuration](#/guide/configuration). |
+| **config** | An assembly-supplied value bound into a `[Parameter]` member before `Configure()` runs. See [configuration](#/guide/configuration). |
 | **`Container<T>`** | The dedicated type expressing **ownership** (containment): a parent's list of owned children of type `T`. Populated from the YAML `Models` block. See [models & containment](#/guide/models-and-containment). |
 | **containment** | The ownership relation between a parent model and the children it owns; the whole subtree shares the parent's site. See [models & containment](#/guide/models-and-containment). |
 | **coroutine** | A model's long-running behaviour written as an `IEnumerator<SimYield>` that `yield`s to advance simulated time — SIMULA's "process" abstraction. See [coroutines](#/guide/coroutines). |
@@ -16,7 +16,7 @@ The vocabulary of SimulaSharp, alphabetical. Each entry links to the chapter tha
 | **horizon** | The single 64-bit number the clock publishes: elapsed simulation time in microseconds. One writer (the clock thread), many readers (the sites). See [time & the clock](#/guide/time-and-clock). |
 | **hosting** | Loading a packed simulator into a collectible context and running/observing/reloading it — the **Hosting** library, ultimately the MMI. See [packing & hosting](#/guide/packing-and-hosting). |
 | **knob** | The unit of observation and control: a named readable/settable value or a trigger, marked with a `[*Knob]` attribute and streamed to a UI. See [observability](#/guide/observability). |
-| **lifecycle states** | The strict progression `Initial → Initialized → Configured → Running`; `Stop()` freezes without leaving `Running`; single-use (no reset). See [simulator lifecycle](#/guide/simulator-lifecycle). |
+| **lifecycle states** | The strict progression `Initialized → Configured → Running` (the constructor assembles, landing in `Initialized`); `Stop()` freezes without leaving `Running`; single-use (no reset). See [simulator lifecycle](#/guide/simulator-lifecycle). |
 | **marshalling** | Handing work across a site boundary: the caller drops a message into the target site's lock-free inbox, which runs it on *its* thread. See [SimSites & actors](#/guide/simsites-and-actors). |
 | **mission epoch** | The fixed absolute instant mission time counts from — the assembly's `MissionStart`, default the Unix epoch. See [time & the clock](#/guide/time-and-clock). |
 | **mission time** | Absolute wall-clock instant of the simulation: `mission epoch + horizon`, read as `MissionNowUs`. See [time & the clock](#/guide/time-and-clock). |

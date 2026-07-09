@@ -172,7 +172,7 @@ and enumerate the `Ref`s. Here is the same pattern from the real `Unit` model, g
 ```csharp
 public partial class Unit(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    [Config] public double Rate { get; set; }
+    [Parameter(0.0)] public double Rate { get; set; }
     public Reference<Unit> Peers { get; } = new();          // reference to sibling Units
 
     public async Task<double> PeerRate()

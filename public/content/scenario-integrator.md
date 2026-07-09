@@ -29,7 +29,7 @@ flowchart LR
 
 ## The model
 
-Because it carries generated members (`[Config]`, a knob, a plottable) the model is **`partial`**.
+Because it carries generated members (`[Parameter]`, a knob, a plottable) the model is **`partial`**.
 The knob property is a `partial` declaration with **no body** — the
 [`KnobGenerator`](#/api/type/SimulaSharp.CodeGen.KnobGenerator) materializes the volatile backing
 field, and the `[Plottable]` reuses that *same* field.
@@ -45,8 +45,8 @@ namespace Power;
 
 public partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    [Config] public double CapacityWh { get; set; }   // full-charge energy, from the assembly
-    [Config] public double NetPowerW { get; set; }    // + charging, − draining, from the assembly
+    [Parameter(500.0)] public double CapacityWh { get; set; }   // full-charge energy, from the assembly
+    [Parameter(-40.0)] public double NetPowerW { get; set; }    // + charging, − draining, from the assembly
 
     private long _lastUs;                              // your own last-time, to integrate
 
@@ -102,7 +102,6 @@ and snapshots every plottable against it.
 
 ```csharp
 using var sim = new PowerSimulator();
-sim.Initialize();
 sim.Configure();
 sim.Start();
 

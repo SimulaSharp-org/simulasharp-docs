@@ -52,7 +52,7 @@ flowchart TB
 You author **models** (C# classes deriving [`ModelBase`](#/api/type/SimulaSharp.Kernel.Model.ModelBase)) and, when
 you need a shared capability, **services**. You express how models relate with two dedicated types —
 `Container<T>` for **ownership** (containment) and `Reference<T>` for **non-owning links**. You mark the values an
-operator should see or change with `[Knob]`/`[Plottable]`, and the values the assembly should fill with `[Config]`.
+operator should see or change with `[Knob]`/`[Plottable]`, and the values the assembly should fill with `[Parameter]`.
 
 Then you write a small **assembly** (`*.simassembly.yaml`) naming the sites, the services, and the model tree. At build
 time a Roslyn generator reads it and emits a strongly-typed `<Name>Simulator` that constructs everything, wires the
@@ -61,12 +61,12 @@ associations, applies config, and exposes the knobs and plottables — all check
 ```mermaid
 flowchart LR
   subgraph src["your class library"]
-    MODELS["Model classes<br/>[Knob] [Plottable] [Config]"]
+    MODELS["Model classes<br/>[Knob] [Plottable] [Parameter]"]
     YAML["plant.simassembly.yaml"]
   end
   MODELS --> GEN
   YAML --> GEN
-  GEN["SimulatorGenerator<br/>(+ Knob/Plottable/Config/Ref/Service gens)"] --> OUT["PlantSimulator : SimulatorBase<br/>OnInitialize() { … }"]
+  GEN["SimulatorGenerator<br/>(+ Knob/Plottable/Parameter/Ref/Service gens)"] --> OUT["PlantSimulator : SimulatorBase<br/>(assembles in ctor)"]
   GEN -->|"topology errors ⇒ SIM001–SIM020"| ERR["build errors"]
 ```
 
@@ -80,8 +80,7 @@ through four states, then tears it down. It is **single-use**: to start over, yo
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Initial
-  Initial --> Initialized: Initialize() — build tree, wire, config
+  [*] --> Initialized: new PlantSimulator() — assemble tree, wire, params
   Initialized --> Configured: Configure() — each model's setup
   Configured --> Running: Start() — start sites + clock
   Running --> Running: Stop() freezes / Start() resumes
@@ -93,7 +92,7 @@ entries** out to any registered sink. Those are the surfaces a UI binds to.
 
 ## Observing and controlling from outside
 
-Two channels reach into a running simulation, both discovered automatically at `Initialize`:
+Two channels reach into a running simulation, both discovered automatically at construction:
 
 - **Knobs** — the unit of *observation and control*: a named readable value, a settable value, or a trigger. Marked
   with the `[*Knob]` attributes; streamed to a UI through an `IKnobChannel`.

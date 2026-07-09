@@ -30,7 +30,7 @@ flowchart TD
   Q -->|"press to do an action"| TR["[TriggerKnob] on Handle_X()"]
   Q -->|"see it plotted over time"| PL["[Plottable] (numeric)"]
   Q -->|"watch AND graph it"| BOTH["read-only [*Knob] + [Plottable]<br/>on one property"]
-  Q -->|"configure it once at build"| CFG["[Config] — NOT a knob<br/>(inbound, from the assembly)"]
+  Q -->|"configure it once at build"| CFG["[Parameter] — NOT a knob<br/>(inbound, from the assembly)"]
   classDef k fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
   classDef p fill:#dcfce7,stroke:#16a34a,color:#14532d;
   classDef c fill:#f3f4f6,stroke:#6b7280,color:#374151;
@@ -50,11 +50,11 @@ flowchart TD
 | Give the operator a button | `[TriggerKnob]` on `Handle_<Name>()` | runs on the model's site thread |
 | Graph a numeric series | `[Plottable]` | numeric/`bool`/`enum` → `double` |
 | Watch **and** graph a value | read-only knob **+** `[Plottable]` on one property | one backing field, both roles |
-| Fix a parameter at build time | `[Config]` | not observability — set in the [assembly](#/guide/the-assembly) |
+| Fix a parameter at build time | `[Parameter]` | not observability — set in the [assembly](#/guide/the-assembly) |
 
-The last row matters: **`[Config]` is not a knob.** Config is inbound, filled once from the assembly; a knob is an
+The last row matters: **`[Parameter]` is not a knob.** Config is inbound, filled once from the assembly; a knob is an
 *operator-facing* surface. A tunable an operator adjusts at runtime is a read/write knob; a fixed build parameter is
-`[Config]`. Some values are sensibly both (a `[Config]` default the operator can then override via a knob) — but decide
+`[Parameter]`. Some values are sensibly both (a `[Parameter]` default the operator can then override via a knob) — but decide
 the intent per value.
 
 ## Read-only vs read/write: who drives it?
@@ -91,7 +91,7 @@ Use triggers for *commands* — reset, arm, jettison, inject-fault — not for s
 ## Naming and paths
 
 Every knob and plottable is discovered under a **full dotted instance path** the simulator stamps at
-[`Initialize()`](#/guide/observability): `Plant.Plant1.UnitA.Setpoint`. You control the last segment (the member) and
+[construction](#/guide/observability): `Plant.Plant1.UnitA.Setpoint`. You control the last segment (the member) and
 the human **label** (the attribute's first argument); the path prefix comes from the assembly's instance names. So:
 
 - **Name instances well in the assembly** — the path an operator sees is `Site → Model names → member`. Meaningful
@@ -106,7 +106,7 @@ the human **label** (the attribute's first argument); the path prefix comes from
 The temptation is to slap `[Plottable]` on every field and `[Knob]` on every property "just in case." Resist it.
 
 > **Consequence for design.** Every knob and plottable is a **stable, public contract** — discovered once at
-> `Initialize()` and fixed for the life of the simulator, bound to by a UI you may not control. Each one is also a small
+> construction and fixed for the life of the simulator, bound to by a UI you may not control. Each one is also a small
 > ongoing cost (a discovery entry, a change subscription, a sample per sweep). Expose the values that an operator
 > genuinely needs to **see, set, or graph** — the ones that would appear on a real console for this subsystem. Keep
 > internal intermediates as plain fields. A focused set of well-labelled knobs is a better contract than a wall of
@@ -130,10 +130,10 @@ flowchart LR
   TR --> UI
   PL --> CH["strip charts"]
   UI["control panel<br/>(indicators · inputs · buttons)"]
-  Note["This whole set = the UI contract.<br/>Fixed at Initialize(); bound by the MMI."]
+  Note["This whole set = the UI contract.<br/>Fixed at construction; bound by the MMI."]
 ```
 
-Because the set is fixed at `Initialize()` and the MMI binds to it, treat adding/renaming a knob like changing a public
+Because the set is fixed at construction and the MMI binds to it, treat adding/renaming a knob like changing a public
 API. Design the panel you'd want to operate, then expose exactly that.
 
 ## What this means for you
@@ -144,7 +144,7 @@ API. Design the panel you'd want to operate, then expose exactly that.
 | Let an operator change an input | read/write knob with sensible `Min`/`Max` |
 | Give an operator a command button | `[TriggerKnob]` on a `Handle_<Name>()` method |
 | Graph a numeric series | `[Plottable]` with a `Unit` |
-| Fix a parameter at build | `[Config]`, in the [assembly](#/guide/the-assembly) — not a knob |
+| Fix a parameter at build | `[Parameter]`, in the [assembly](#/guide/the-assembly) — not a knob |
 | Keep an internal value private | leave it a plain field — don't expose it |
 | Make paths readable | name instances meaningfully in the assembly |
 

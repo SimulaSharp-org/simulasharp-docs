@@ -87,7 +87,7 @@ using var package = new SimulatorPackage("out/Plant.nupkg");
 foreach (var name in package.Simulators) Console.WriteLine(name);   // "Plant"
 
 ISimulator sim = package.Create("Plant");    // a fresh PlantSimulator, typed as ISimulator
-// drive it: Initialize → Configure → Start → Stop → Dispose  (see the lifecycle page)
+// drive it: construct → Configure → Start → Stop → Dispose  (see the lifecycle page)
 ```
 
 `Create` news up the type via its parameterless ctor and hands it back as `ISimulator`. An unknown name throws
@@ -109,7 +109,7 @@ is single-use all the way down, mirroring the simulator's own [no-reset lifecycl
 stateDiagram-v2
   [*] --> Loaded: new SimulatorPackage(path)
   Loaded --> Created: Create(name) → ISimulator
-  Created --> Running: Initialize/Configure/Start
+  Created --> Running: Configure/Start
   Running --> Unloaded: dispose ISimulator, then dispose package
   Unloaded --> [*]: shadow removed, ALC collected
   Unloaded --> Loaded: new SimulatorPackage(newBuild)

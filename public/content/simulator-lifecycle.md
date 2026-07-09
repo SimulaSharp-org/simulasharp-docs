@@ -1,14 +1,13 @@
 # The simulator lifecycle
 
 A generated `<Name>Simulator` is an [`ISimulator`](#/api/type/SimulaSharp.Kernel.Services.ISimulator). Whatever drives
-it — a CLI, a test, ultimately the MMI — walks it through a **short, strict lifecycle**: build it, configure it, run it,
-tear it down. There are four states and four verbs, guarded so you cannot skip a step, and the whole thing is
+it — a CLI, a test, ultimately the MMI — walks it through a **short, strict lifecycle**: construct it (which
+**assembles** the whole topology), optionally tune its parameters, configure it, run it, tear it down. It is
 **single-use** — to run again, you make a new one.
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Initial
-  Initial --> Initialized: Initialize() — build tree, wire, config, discover knobs/plottables
+  [*] --> Initialized: new <Name>Simulator() — assemble tree, wire, apply params, discover knobs/plottables/params
   Initialized --> Configured: Configure() — services' then models' Configure()
   Configured --> Running: Start() — start every site, then the clock
   Running --> Running: Stop() freezes (IsRunning=false) / Start() resumes
@@ -17,8 +16,9 @@ stateDiagram-v2
   Configured --> [*]: Dispose()
 ```
 
-The states are a [`SimulatorState`](#/api/type/SimulaSharp.Kernel.Services.SimulatorState) enum:
-**Initial → Initialized → Configured → Running**. They only ever move forward.
+The states are a [`SimulatorState`](#/api/type/SimulaSharp.Kernel.Services.SimulatorState) enum. A freshly-constructed
+simulator is already **Initialized** (assembled by its constructor); from there it only moves forward:
+**Initialized → Configured → Running**. There is no separate `Initialize()` step.
 
 ---
 
@@ -26,9 +26,10 @@ The states are a [`SimulatorState`](#/api/type/SimulaSharp.Kernel.Services.Simul
 
 | Step | Guard | What it does | State after |
 |---|---|---|---|
+| `new <Name>Simulator()` | — | The constructor **assembles**: constructs sites, services, and the model tree; applies parameters (assembly values + defaults); wires containment, deps, references; **discovers knobs, plottables & parameters**. | `Initialized` |
 | `RegisterLogSink(sink)` | none — any time | Adds a log destination to the router; entries after it fan out to it. | *(unchanged)* |
-| `RegisterKnobChannel(ch)` | none — before or after `Initialize` | Registers an MMI knob channel; attaches immediately if knobs are already discovered. | *(unchanged)* |
-| `Initialize()` | none (idempotent) | Runs the generated `OnInitialize`: constructs sites, services, and the model tree; applies config; wires containment, deps, references; **discovers knobs & plottables** and attaches any registered channels. | `Initialized` |
+| `RegisterKnobChannel(ch)` | none — any time | Registers an MMI knob channel; attaches immediately (knobs are already discovered). | *(unchanged)* |
+| `GetParams()` / `SetParam(p, v)` | `SetParam` requires **not yet `Configured`** | Read every per-instance parameter; override a value before the run is fixed. | *(unchanged)* |
 | `Configure()` | requires `Initialized` | Runs every **service's** then every **model's** `Configure()`. | `Configured` |
 | `Start()` | requires `Configured` | First call starts **every SimSite** thread; every call (re)starts the **clock**. | `Running` |
 | `Stop()` | none | **Pauses the clock** — freezes the horizon. State stays `Running`; `IsRunning` goes false. Resume with `Start()`. | `Running` (frozen) |
@@ -36,19 +37,19 @@ The states are a [`SimulatorState`](#/api/type/SimulaSharp.Kernel.Services.Simul
 
 ### The guards
 
-Two transitions are guarded, and violating them throws `InvalidOperationException`:
+Two things throw `InvalidOperationException`:
 
-- `Configure()` before `Initialize()` → *"Initialize() must run before Configure()."*
-- `Start()` before `Configure()` → *"Configure() must run before Start()."*
+- `Start()` before `Configure()` → the run isn't configured.
+- `SetParam(...)` after `Configure()` → parameters are fixed once the run is configured.
 
-`Initialize()` and `Configure()` are **idempotent** — calling them again once past their state is a no-op, they simply
-return. `Start()` is safe to call repeatedly too: it only starts the sites once (on the transition into `Running`), and
-thereafter each call just restarts the clock — which is exactly how **resume** works.
+`Configure()` is **idempotent** — calling it again once past its state is a no-op. `Start()` is safe to call repeatedly
+too: it only starts the sites once (on the transition into `Running`), and thereafter each call just restarts the
+clock — which is exactly how **resume** works.
 
-> **Consequence for design.** The four steps separate *building* (`Initialize`), *setting up* (`Configure`), and
-> *running* (`Start`) into distinct phases. Config values are populated during `Initialize`, so your model's
-> `Configure()` can rely on them; and nothing runs on a site thread until `Start()`. Don't do work in a constructor that
-> belongs in `Configure()`.
+> **Consequence for design.** Building happens in the **constructor**, so a freshly-`new`'d simulator is ready to
+> inspect — you can `GetParams()`/`SetParam()` before anything runs. Parameters are populated before `Configure()`, so
+> your model's `Configure()` can rely on them; and nothing runs on a site thread until `Start()`. Don't do work in
+> *your model's* constructor that belongs in its `Configure()` — parameters aren't applied yet at that point.
 
 ---
 
@@ -66,12 +67,13 @@ sequenceDiagram
   participant Sites as SimSites
   participant Clock
 
-  Host->>Sim: RegisterLogSink(sink)
-  Host->>Sim: Initialize()
+  Host->>Sim: new <Name>Simulator()
   activate Sim
-  Sim->>Sim: OnInitialize() — build tree, wire, config
-  Sim->>Sim: discover knobs & plottables, attach channels
+  Sim->>Sim: assemble — build tree, wire, apply params
+  Sim->>Sim: discover knobs, plottables & parameters
   deactivate Sim
+  Host->>Sim: RegisterLogSink(sink) / RegisterKnobChannel(ch)
+  Host->>Sim: SetParam(p, v)  (before Configure)
   Host->>Sim: Configure()
   Sim->>Sites: services' then models' Configure()
   Host->>Sim: Start()
@@ -119,13 +121,16 @@ simulator and creating a new one, never mutating one in place (see [packing & ho
 A host loop over the shared `ISimulator` surface:
 
 ```csharp
-using ISimulator sim = package.Create("Plant");   // a generated PlantSimulator, as ISimulator
+using ISimulator sim = package.Create("Plant");   // a generated PlantSimulator, already assembled
 
 sim.RegisterLogSink(new ConsoleLogSink());         // any time — before or during the run
-sim.RegisterKnobChannel(mmiChannel);               // before Initialize → gets knobs on discovery
+sim.RegisterKnobChannel(mmiChannel);               // knobs are already discovered → attaches now
 
-sim.Initialize();   // build the tree, wire, apply config, discover knobs & plottables
-sim.Configure();    // run every service's then model's Configure()
+foreach (var p in sim.GetParams())                 // inspect / tune before the run is fixed
+    Console.WriteLine($"{p.Path} = {p.Read()}");
+sim.SetParam(sim.GetParams().Single(p => p.Path == "Plant.Plant1.Capacity"), 8);
+
+sim.Configure();    // run every service's then model's Configure() — parameters now fixed
 sim.Start();        // start the sites, then the clock — time advances 1:1 with the wall clock
 
 // ... observe & control while it runs ...
@@ -140,12 +145,13 @@ sim.Start();        // resume seamlessly from the frozen horizon
 ```
 
 Everything the host touches — `Clock`, `State`, `IsRunning`, `RegisterLogSink`, `Knobs`, `RegisterKnobChannel`,
-`Plottables`, `SamplePlottables`, and the four lifecycle verbs — lives on `ISimulator` / `SimulatorBase`, **never on the
-generated subclass**. That is what lets the MMI drive any simulator it loads through one stable interface.
+`Plottables`, `SamplePlottables`, `GetParams`/`SetParam`, and the lifecycle verbs — lives on `ISimulator` /
+`SimulatorBase`, **never on the generated subclass**. That is what lets the MMI drive any simulator it loads through one
+stable interface.
 
 > **Consequence for design.** Because the simulator is single-use and driven only through `ISimulator`, a host never
-> needs to know the concrete type or reach into the model tree to "clean up". Run, dispose, and — if you need another
-> run — create afresh. Statelessness across runs is a property you get for free.
+> needs to know the concrete type or reach into the model tree to "clean up". Construct, tune, run, dispose — and if you
+> need another run, create afresh. Statelessness across runs is a property you get for free.
 
 Next: **[packing & hosting](#/guide/packing-and-hosting)** — how a finished simulator is packed and loaded so a host can
 create, run, and reload it.

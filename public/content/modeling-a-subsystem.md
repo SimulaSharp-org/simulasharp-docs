@@ -128,7 +128,7 @@ using SimulaSharp.Kernel.Attributes;
 public sealed partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     // Set once by the assembly; a fixed parameter, not operator-driven.
-    [Config] public double CapacityAh { get; set; }
+    [Parameter(100.0)] public double CapacityAh { get; set; }
 
     // Operator-settable input: the load, as a slider 0–50 A.
     [FloatKnob("Load", Min = 0, Max = 50, DecimalPlaces = 1)]
@@ -147,7 +147,7 @@ public sealed partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBa
 
 Note the split of concerns:
 
-- **`[Config]`** — a build-time parameter from the [assembly](#/guide/the-assembly) (`CapacityAh: 100`), not an operator
+- **`[Parameter]`** — a build-time parameter from the [assembly](#/guide/the-assembly) (`CapacityAh: 100`), not an operator
   control.
 - **read/write knob** (`Load`) — the operator drives it; the model reads it in `Step()` as `_loadA` (or just reference
   `Load` directly — it's a normal typed property).
@@ -168,7 +168,7 @@ public sealed partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBa
     private double _chargeAh;
     private long   _lastUs = -1;
 
-    [Config] public double CapacityAh { get; set; }
+    [Parameter(100.0)] public double CapacityAh { get; set; }
 
     [FloatKnob("Load", Min = 0, Max = 50, DecimalPlaces = 1)]
     public partial double Load { get; set; }
@@ -226,7 +226,7 @@ If the step needs data from another model, *how* you fetch it depends on where t
 | Let the operator watch a value | read-only `[*Knob]` (add `[Plottable]` to graph it too) |
 | Let the operator set a value | read/write `[*Knob]` |
 | Give the operator a button | `[TriggerKnob]` on a `Handle_<Name>()` method |
-| Take a fixed build-time parameter | `[Config]` property, set in the assembly |
+| Take a fixed build-time parameter | `[Parameter]` property, set in the assembly |
 
 Next: how models **talk** — **[interaction patterns](#/guide/interaction-patterns)**. Or see this scaled up in the
 [integrator scenario](#/guide/scenario-integrator).

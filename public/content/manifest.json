@@ -20,7 +20,7 @@
         { "slug": "associations", "title": "Associations: containment vs reference", "file": "associations.md" },
         { "slug": "services", "title": "Services", "file": "services.md" },
         { "slug": "observability", "title": "Observability: knobs & plottables", "file": "observability.md" },
-        { "slug": "configuration", "title": "Configuration", "file": "configuration.md" },
+        { "slug": "configuration", "title": "Parameters", "file": "configuration.md" },
         { "slug": "the-assembly", "title": "The assembly", "file": "the-assembly.md" },
         { "slug": "simulator-lifecycle", "title": "The simulator lifecycle", "file": "simulator-lifecycle.md" },
         { "slug": "packing-and-hosting", "title": "Packing & hosting", "file": "packing-and-hosting.md" }

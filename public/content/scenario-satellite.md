@@ -83,7 +83,7 @@ public partial class Eps(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 
 public partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    [Config] public double CapacityWh { get; set; }
+    [Parameter(1500.0)] public double CapacityWh { get; set; }
     [FloatKnob("Charge", Min = 0, Max = 100, DecimalPlaces = 1, IsReadOnly = true)]
     [Plottable("Charge", Unit = "%")]
     public partial double ChargePct { get; set; }        // integrates net power (see the integrator scenario)
@@ -107,7 +107,7 @@ public partial class Adcs(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l
 
 public partial class Wheel(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    [Config] public double Inertia { get; set; }
+    [Parameter(0.02)] public double Inertia { get; set; }
     [FloatKnob("RPM", Min = -6000, Max = 6000, IsReadOnly = true)]
     [Plottable("RPM")] public partial double Rpm { get; set; }
 }
@@ -186,7 +186,6 @@ Running it is the plain [lifecycle](#/guide/simulator-lifecycle); all four threa
 
 ```csharp
 using var sim = new BirdSimulator();
-sim.Initialize();
 sim.Configure();
 sim.Start();
 sim.Clock.RunFor(60_000_000);            // one real minute of flight

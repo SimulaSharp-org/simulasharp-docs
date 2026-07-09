@@ -27,7 +27,6 @@ constructor**. A driver (the MMI, or your own CLI) walks it through the lifecycl
 ```csharp
 using var sim = new PlantSimulator();   // <Name> from Simulator.Name in the YAML
 
-sim.Initialize();   // build the topology: sites, model tree, wire refs, apply config
 sim.Configure();    // run every model's / service's Configure() depth-first
 sim.Start();        // start the sites and the clock — time begins advancing 1:1
 
@@ -37,7 +36,7 @@ sim.Stop();         // freeze the horizon (resume with Start())
 // Dispose (via `using`) tears it down — single-use, no reset.
 ```
 
-The states advance strictly `Initial → Initialized → Configured → Running`; calling them out of order throws.
+The states advance strictly `Initialized → Configured → Running` (a constructed simulator starts already `Initialized`); calling them out of order throws.
 `Stop()` freezes the run **without** leaving `Running` — check
 [`IsRunning`](#/api/type/SimulaSharp.Kernel.Services.ISimulator) for the live status. See
 **[Simulator lifecycle](#/guide/simulator-lifecycle)** for the full walk.
@@ -48,7 +47,6 @@ Because time is **[hard real-time](#/guide/time-and-clock)** there is no run-to-
 known length, arm the clock to stop itself and block until it does:
 
 ```csharp
-sim.Initialize();
 sim.Configure();
 sim.Clock.RunFor(200_000);   // run ~200 ms of sim time (≈200 ms wall clock), then pause
 ```
@@ -69,7 +67,6 @@ off-thread effects with a **bounded spin** rather than a fixed sleep. The suite 
 public void Plant_fills_at_the_configured_rate()
 {
     using var sim = new PlantSimulator();
-    sim.Initialize();
     sim.Configure();
 
     sim.Clock.RunFor(100_000);   // 100 ms of real time

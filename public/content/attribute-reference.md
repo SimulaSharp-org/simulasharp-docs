@@ -64,23 +64,28 @@ Supported member types: **any numeric** (`int`/`long`/`float`/`double`/…), **`
 public partial float Voltage { get; set; }
 ```
 
-## Config
+## Parameter
 
-Fills a member from this instance's `Config` block in the assembly YAML, validated and bound before `Configure()`
-runs. See **[configuration](#/guide/configuration)**.
+Declares a **build-time parameter**: a value-type member filled from this instance's `Config` block in the assembly
+YAML (bound during construction), with the **default in the attribute**, and exposed per-instance via
+`ISimulator.GetParams()`/`SetParam()` for override before `Configure()`. See **[parameters](#/guide/configuration)**.
 
 | Attribute | Target | Parameters | Effect |
 |---|---|---|---|
-| [`ConfigAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.ConfigAttribute) | settable property **or** field | `key` (ctor arg, def = member name), `Required` (def `true`) | Binds the YAML value into the member. `Required = false` keeps the existing/default value when the key is absent. |
+| [`ParameterAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.ParameterAttribute) | settable value-type property **or** field | `default` (ctor arg — the value when the key is absent), `Key` (named, def = member name), `Required` (named, def `false`) | Binds the YAML value into the member; falls back to the default when the key is absent (or throws if `Required`). |
 
-An unknown config key in the YAML (no matching `[Config]` member) is the **warning** SIM015.
+An unknown config key in the YAML (no matching `[Parameter]` member) is the **warning** SIM015. The assembly block is
+still named `Config:`.
 
 ```csharp
-[Config]                 // key "Capacity"
+[Parameter(5)]                       // default 5, key "Capacity"
 public int Capacity { get; set; }
 
-[Config("Rate", Required = false)]
-public double FillRate { get; set; } = 1.0;
+[Parameter(1.0, Key = "Rate")]       // default 1.0, custom key
+public double FillRate { get; set; }
+
+[Parameter(Required = true)]         // no default → must be supplied
+public int Node { get; set; }
 ```
 
 ## Services

@@ -210,7 +210,7 @@ reason reset doesn't exist. In tests, construct a new `PlantSimulator()` per cas
 
 ```csharp
 // GOOD — each scenario is a fresh instance
-using (var sim = new PlantSimulator()) { sim.Initialize(); sim.Configure(); sim.RunFor(1_000_000); }
+using (var sim = new PlantSimulator()) { sim.Configure(); sim.RunFor(1_000_000); }
 using (var sim = new PlantSimulator()) { /* clean state, second scenario */ }
 ```
 
@@ -221,7 +221,7 @@ using (var sim = new PlantSimulator()) { /* clean state, second scenario */ }
 **Symptom:** an unreadable control panel; a fragile UI contract that churns every time you touch a model.
 
 **Cause:** decorating every field with `[Plottable]` and every property with `[Knob]` "just in case." The knob/plottable
-set is a **public contract**, fixed at `Initialize()` and bound by a UI you may not control.
+set is a **public contract**, fixed in the constructor and bound by a UI you may not control.
 
 **Fix:** expose only what an operator genuinely needs to **see, set, or command** — the values that would appear on the
 real subsystem's console. Keep scratch variables as plain fields. See [designing
@@ -234,8 +234,8 @@ observability](#/guide/observability-design).
 **Symptom:** a `NullReferenceException` touching a `Reference<T>` accessor, or a model that reads *default* config
 values, during setup.
 
-**Cause:** the constructor runs **before** the simulator wires references and fills [`[Config]`](#/guide/configuration).
-A `Reference<T>`'s generated `_<Member>` accessor and your `[Config]` properties aren't populated yet.
+**Cause:** the constructor runs **before** the simulator wires references and fills [`[Parameter]`](#/guide/configuration).
+A `Reference<T>`'s generated `_<Member>` accessor and your `[Parameter]` properties aren't populated yet.
 
 **Fix:** do all setup in [`Configure()`](#/guide/models-and-containment) — the earliest point the model is whole
 (constructed, wired, configured). Arm events, subscribe to services, and precompute there, never in the constructor.

@@ -186,19 +186,15 @@ public partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBase(c, s
 
 ## Discovery and the knob channel
 
-Knobs are **discovered at `Initialize()`**. As the generated `OnInitialize` builds the model tree, it calls
+Knobs are **discovered in the constructor**. As the generated constructor builds the model tree, it calls
 `CollectKnobsFrom(model, fullPath)` on each instance; models that declare knobs implement `IKnobProvider` and stamp
 each binder with the instance's **full dotted path** (`SimName.Path.To.Instance.Member`). The results accumulate into
 [`ISimulator.Knobs`](#/api/type/SimulaSharp.Kernel.Services.ISimulator).
 
-The MMI plugs in an [`IKnobChannel`](#/api/type/SimulaSharp.Kernel.Knobs.IKnobChannel) via `RegisterKnobChannel`. You
-may register **before or after** `Initialize()`:
-
-- register **before** → the channel receives `OnKnobsDiscovered` the moment discovery completes;
-- register **after** → it receives them immediately, since discovery has already happened.
-
-Either way the simulator hands the channel the full knob list once, then subscribes it to every knob's `Changed`, so it
-gets an `OnKnobChanged(knob)` on each change.
+The MMI plugs in an [`IKnobChannel`](#/api/type/SimulaSharp.Kernel.Knobs.IKnobChannel) via `RegisterKnobChannel`. Since
+knobs are discovered in the constructor, they already exist by the time you can register a channel — so it receives
+`OnKnobsDiscovered` immediately. The simulator hands the channel the full knob list once, then subscribes it to every
+knob's `Changed`, so it gets an `OnKnobChanged(knob)` on each change.
 
 ```mermaid
 sequenceDiagram
@@ -207,14 +203,14 @@ sequenceDiagram
   participant Model as model (site thread)
   participant Ch as IKnobChannel
 
-  Host->>Sim: RegisterKnobChannel(ch)
-  Host->>Sim: Initialize()
+  Host->>Sim: new PlantSimulator()
   activate Sim
   Sim->>Model: CollectKnobs(path, into)
   Model-->>Sim: Knob binders (stamped with path)
+  deactivate Sim
+  Host->>Sim: RegisterKnobChannel(ch)
   Sim->>Ch: OnKnobsDiscovered(knobs)
   Sim->>Sim: knob.Changed += () => ch.OnKnobChanged(knob)
-  deactivate Sim
 
   Note over Host,Model: later — operator turns a knob
   Host->>Sim: knob.Write(4200)
@@ -300,7 +296,7 @@ sequenceDiagram
 > model is unaffected either way. Keep plottable fields cheap to read — a `Sample` that did real work would run on the
 > consumer's thread at the consumer's rate.
 
-Plottables, like knobs, are discovered at `Initialize()` (`CollectPlottablesFrom`) and keyed by full dotted path in
+Plottables, like knobs, are discovered at construction (`CollectPlottablesFrom`) and keyed by full dotted path in
 [`ISimulator.Plottables`](#/api/type/SimulaSharp.Kernel.Services.ISimulator).
 
 ---
@@ -316,7 +312,7 @@ Plottables, like knobs, are discovered at `Initialize()` (`CollectPlottablesFrom
 | Value shape | typed (bool/number/text) or a method | projected to `double` |
 | Cross-thread access | lock-free volatile read/write | lock-free volatile read |
 | Exposed on | `ISimulator.Knobs` | `ISimulator.Plottables` |
-| Discovered | at `Initialize()` | at `Initialize()` |
+| Discovered | at construction | at construction |
 
 Both are surfaces on the shared [`ISimulator`](#/api/type/SimulaSharp.Kernel.Services.ISimulator) / `SimulatorBase` —
 never on the generated `<Name>Simulator`. That is deliberate: the MMI binds to one stable type regardless of which

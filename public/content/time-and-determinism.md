@@ -106,7 +106,6 @@ fails fast instead of hanging:
 
 ```csharp
 using var sim = new PlantSimulator();
-sim.Initialize();
 sim.Configure();
 
 sim.RunFor(500_000);                    // advance 500 ms of real time, then pause

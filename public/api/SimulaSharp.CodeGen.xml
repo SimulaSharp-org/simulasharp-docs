@@ -4,25 +4,6 @@
         <name>SimulaSharp.CodeGen</name>
     </assembly>
     <members>
-        <member name="T:SimulaSharp.CodeGen.ConfigGenerator">
-            <summary>
-            For every partial model/service with <c>[Config]</c>-marked members, emits an
-            <c>internal void __ApplyConfig(IReadOnlyDictionary&lt;string, string?&gt; config)</c>
-            that binds the assembly's (weakly-typed, textual) <c>Config</c> values into the
-            strongly-typed members: each member is looked up by its key, converted to its
-            declared type, and assigned; a missing required key throws. The generated simulator
-            calls this with each instance's <c>Config</c> block before <c>Configure()</c> runs.
-            </summary>
-        </member>
-        <member name="M:SimulaSharp.CodeGen.ConfigGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
-            <inheritdoc/>
-        </member>
-        <member name="M:SimulaSharp.CodeGen.ConfigGenerator.Settable(Microsoft.CodeAnalysis.ISymbol,Microsoft.CodeAnalysis.ITypeSymbol@)">
-            <summary>True if the member can be assigned from within the class (with its type).</summary>
-        </member>
-        <member name="M:SimulaSharp.CodeGen.ConfigGenerator.ConvertExpr(Microsoft.CodeAnalysis.ITypeSymbol,System.String)">
-            <summary>A C# expression converting string variable <paramref name="v"/> to <paramref name="type"/>, or "" if unsupported.</summary>
-        </member>
         <member name="T:SimulaSharp.CodeGen.KnobGenerator">
             <summary>
             For every partial model with knob-decorated partial properties, implements them
@@ -34,6 +15,37 @@
         </member>
         <member name="M:SimulaSharp.CodeGen.KnobGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
             <inheritdoc/>
+        </member>
+        <member name="T:SimulaSharp.CodeGen.ParameterGenerator">
+            <summary>
+            For every partial model/service with <c>[Parameter]</c>-marked members, emits two things into the partial:
+            <list type="bullet">
+              <item>an internal <c>__ApplyParameters(IReadOnlyDictionary&lt;string, string?&gt;)</c> that binds the
+              assembly's (weakly-typed, textual) <c>Config</c> values into the strongly-typed members — when a key is
+              present it is converted and assigned; when it is absent the attribute's <b>default</b> is applied (or, for a
+              <c>Required</c> parameter, an error is thrown);</item>
+              <item>an explicit <c>IParameterProvider.CollectParameters</c> that builds one <c>ParameterInfo</c> binder
+              per parameter (boxed read/write over the member), so the simulator can expose <c>GetParams()</c>/<c>SetParam()</c>.</item>
+            </list>
+            The generated simulator calls both while assembling (in its constructor), before <c>Configure()</c>.
+            A parameter may also carry <c>[Knob]</c>/<c>[Plottable]</c>; this generator only references the member, so it
+            composes with the field the knob generator materializes.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ParameterGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ParameterGenerator.EmitApply(System.Text.StringBuilder,System.String,SimulaSharp.CodeGen.ParameterGenerator.Param)">
+            <summary>Binds one parameter from the assembly's Config dict; falls back to the attribute default, or throws if Required.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ParameterGenerator.EmitCollect(System.Text.StringBuilder,SimulaSharp.CodeGen.ParameterGenerator.Param)">
+            <summary>Builds the ParameterInfo binder (boxed read/write over the member, plus the boxed default).</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ParameterGenerator.Settable(Microsoft.CodeAnalysis.ISymbol,Microsoft.CodeAnalysis.ITypeSymbol@)">
+            <summary>True if the member can be assigned from within the class (with its type).</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ParameterGenerator.ConvertExpr(Microsoft.CodeAnalysis.ITypeSymbol,System.String)">
+            <summary>A C# expression converting string variable <paramref name="v"/> to <paramref name="type"/>, or "" if unsupported.</summary>
         </member>
         <member name="T:SimulaSharp.CodeGen.PlottableGenerator">
             <summary>
@@ -118,9 +130,10 @@
             <summary>
             Generates a <c>&lt;Name&gt;Simulator : SimulatorBase</c> from each
             <c>*.simassembly.yaml</c> (an <c>AdditionalFiles</c> item), parsed with YamlDotNet.
-            The generated <c>OnInitialize</c> creates the sites, constructs the services and the
-            model tree (depth-first, wiring containment and applying config), and binds service
-            dependencies. References are not yet wired (pending the reference-accessor generator).
+            The generated <b>constructor</b> creates the sites, constructs the services and the
+            model tree (depth-first, wiring containment and applying parameters), binds service
+            dependencies, discovers knobs/plottables/parameters, and calls <c>OnAssembled</c> — so a
+            freshly-constructed simulator is already assembled and ready to tune then Configure.
             <para>
             Conventions (v1): YAML <c>Type</c> is the fully-qualified type name; models have a
             <c>(IClock, IScheduler, ILogger)</c> ctor and services a <c>(IClock, ILogger)</c> ctor;

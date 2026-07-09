@@ -16,7 +16,7 @@ compiled code.
 ```mermaid
 flowchart LR
   subgraph AUTHOR["What you author"]
-    M["Models<br/>ModelBase + [Knob]/[Plottable]/[Config]"]
+    M["Models<br/>ModelBase + [Knob]/[Plottable]/[Parameter]"]
     S["Services<br/>ServiceBase + [ServiceEvent]/[ServiceRequest]"]
     Y["Assembly<br/>plant.simassembly.yaml"]
   end
@@ -72,7 +72,7 @@ Two things structure everything else you write:
   accessor that auto-dispatches — synchronous if same-site, marshalled if cross-site. See
   [associations](#/guide/associations).
 
-> **Consequence for design.** A model that touches any generated member — a knob, a `[Config]`, a `Reference<T>` — must
+> **Consequence for design.** A model that touches any generated member — a knob, a `[Parameter]`, a `Reference<T>` — must
 > be declared **`partial`**, so the generator can weave in its half. A model with none can be `sealed`. When in doubt,
 > mark it `partial`; it costs nothing.
 
@@ -186,7 +186,7 @@ flowchart TB
   SVCS -->|"types & members"| GEN
   ASM -->|"topology & config"| GEN
   GEN["Source generators"] --> OUT["&lt;Name&gt;Simulator : SimulatorBase"]
-  OUT --> LIFE["Initialize → Configure → Start → Stop → Dispose"]
+  OUT --> LIFE["construct → Configure → Start → Stop → Dispose"]
   LIFE --> OBS["Knobs · Plottables · Log entries<br/>(the surfaces a UI binds to)"]
 ```
 

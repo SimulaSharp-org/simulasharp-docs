@@ -21,7 +21,7 @@ flowchart LR
   end
   Y --> G["SimulatorGenerator"]
   T --> G
-  G -->|"valid"| OUT["PlantSimulator : SimulatorBase<br/>OnInitialize() { … }"]
+  G -->|"valid"| OUT["PlantSimulator : SimulatorBase<br/>(assembles in ctor)"]
   G -->|"any error"| ERR["SIM001–SIM015<br/>build fails, no emission"]
 ```
 
@@ -70,7 +70,7 @@ Simulator:
       Models:
         - Name: Plant1
           Type: Demo.Plant          # fully-qualified; ctor (IClock, IScheduler, ILogger)
-          Config: { Capacity: 5 }   # scalars → [Config] members (see Configuration)
+          Config: { Capacity: 5 }   # scalars → [Parameter] members (see Configuration)
           Models:                   # containment: { <containerFieldName>: [ children ] }
             - Units:
                 - Name: UnitA
@@ -115,7 +115,7 @@ A model node is the workhorse. Its fields:
 |---|---|---|
 | `Name` | scalar | The instance name; contributes to the dotted path. |
 | `Type` | scalar | Fully-qualified type; must implement `IModel` with the `(IClock, IScheduler, ILogger)` ctor. |
-| `Config` | map | Scalars bound to `[Config]` members ([Configuration](#/guide/configuration)). |
+| `Config` | map | Scalars bound to `[Parameter]` members ([Configuration](#/guide/configuration)). |
 | `Models` | list of `{ containerField: [children] }` | **Containment** — nests children into a `Container<T>` field. |
 | `Refs` | list of `{ referenceField: [dotted.paths] }` | **References** — non-owning links into a `Reference<T>` field, by full instance path. |
 | `Deps` | list of `{ serviceRefMember: serviceName }` | **Service bindings** — assigns a named service to a `[ServiceRef]` member. |
@@ -133,29 +133,27 @@ logger issuer.
 
 ## What the generator emits
 
-The generator constructs everything in `OnInitialize`, depth-first, in a fixed order. Here is the **real** generated
+The generator constructs everything in the **constructor**, depth-first, in a fixed order. Here is the **real** generated
 output for the sandbox assembly above:
 
 ```csharp
 public sealed class PlantSimulator : SimulatorBase
 {
-    public PlantSimulator() : base(new DateTime(639028224000000000L, DateTimeKind.Utc)) { }  // MissionStart
-
-    protected override void OnInitialize()
+    public PlantSimulator() : base(new DateTime(639028224000000000L, DateTimeKind.Utc))  // MissionStart
     {
         var __c0 = RegisterService(new Demo.DemoService(Clock, CreateLogger("Plant.Tracker")));
         var __c1 = CreateSite("Main", 1024);
         var __c2 = Register(new Demo.Plant(Clock, __c1, CreateLogger("Plant.Plant1")));
-        __c2.__ApplyConfig(new Dictionary<string, string?> { ["Capacity"] = "5" });
+        __c2.__ApplyParameters(new Dictionary<string, string?> { ["Capacity"] = "5" });
         CollectKnobsFrom(__c2, "Plant.Plant1");
         CollectPlottablesFrom(__c2, "Plant.Plant1");
         var __c3 = Register(new Demo.Unit(Clock, __c1, CreateLogger("Plant.Plant1.UnitA")));
-        __c3.__ApplyConfig(new Dictionary<string, string?> { ["Rate"] = "1.5" });
+        __c3.__ApplyParameters(new Dictionary<string, string?> { ["Rate"] = "1.5" });
         CollectKnobsFrom(__c3, "Plant.Plant1.UnitA");
         CollectPlottablesFrom(__c3, "Plant.Plant1.UnitA");
         __c2.Units.Add(__c3);                       // containment: parent.<field>.Add(child)
         var __c4 = Register(new Demo.Unit(Clock, __c1, CreateLogger("Plant.Plant1.UnitB")));
-        __c4.__ApplyConfig(new Dictionary<string, string?> { ["Rate"] = "2.5" });
+        __c4.__ApplyParameters(new Dictionary<string, string?> { ["Rate"] = "2.5" });
         CollectKnobsFrom(__c4, "Plant.Plant1.UnitB");
         CollectPlottablesFrom(__c4, "Plant.Plant1.UnitB");
         __c2.Units.Add(__c4);
@@ -164,6 +162,7 @@ public sealed class PlantSimulator : SimulatorBase
         (__c2 as IReferenceWiring)?.WireReferences();   // reference accessors built
         (__c3 as IReferenceWiring)?.WireReferences();
         (__c4 as IReferenceWiring)?.WireReferences();
+        OnAssembled();
     }
 }
 ```
@@ -172,7 +171,7 @@ Read top to bottom, the generator's passes are:
 
 1. **Services** — `RegisterService(new Svc(Clock, CreateLogger(path)))`, then apply service config.
 2. **Sites + model tree** — `CreateSite(...)`, then depth-first per root: `Register(new Model(Clock, site,
-   CreateLogger(fullPath)))`, `__ApplyConfig`, `CollectKnobsFrom`/`CollectPlottablesFrom`, then recurse into children
+   CreateLogger(fullPath)))`, `__ApplyParameters`, `CollectKnobsFrom`/`CollectPlottablesFrom`, then recurse into children
    and `parent.<containerField>.Add(child)`.
 3. **Service dependency binding** — after everything is constructed, `model.<member> = service`.
 4. **Reference wiring** — populate each `Reference<T>` (`model.<field>.Add(target)`), then
@@ -214,7 +213,7 @@ error, not a cascade of downstream compile errors against a half-built class.
 | `SIM012` | Dependency member not found / not `[ServiceRef]` |
 | `SIM013` | Dependency names an unknown service |
 | `SIM014` | Service not assignable to the dependency member |
-| `SIM015` | *(warning)* Config key with no matching `[Config]` member |
+| `SIM015` | *(warning)* Config key with no matching `[Parameter]` member |
 
 > **Consequence for design.** The assembly is a **statically-checked wiring diagram**. You cannot ship a simulator whose
 > tree does not typecheck against your models. When you rename a model field or change a type, the assembly fails to

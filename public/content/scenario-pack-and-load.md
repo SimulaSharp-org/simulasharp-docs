@@ -61,7 +61,6 @@ Console.WriteLine(string.Join(", ", pack.Simulators));   // e.g. "Bird"
 ISimulator sim = pack.Create("Bird");
 
 // 4 ── RUN: the usual lifecycle (register any log sinks / knob channel first).
-sim.Initialize();
 sim.Configure();
 sim.Start();
 sim.Clock.RunFor(5_000_000);        // a bounded ~5 s run
@@ -79,7 +78,7 @@ dispose the old simulator, dispose the pack (unloading its ALC), then construct 
 
 ```csharp
 ISimulator sim  = pack.Create("Bird");
-// … Initialize → Configure → Start → RunFor → Dispose …
+// … construct → Configure → Start → RunFor → Dispose …
 sim.Dispose();          // 1. dispose the simulator you created
 pack.Dispose();         // 2. dispose the pack → ALC unloads, shadow copy removed
 
@@ -94,7 +93,7 @@ sim2.Dispose();
 flowchart LR
   P["dotnet pack<br/>→ .nupkg"] --> L["new SimulatorPackage(path)<br/>collectible ALC"]
   L --> D["pack.Simulators<br/>Create(name) → ISimulator"]
-  D --> R["Initialize → Configure<br/>Start → RunFor → Dispose"]
+  D --> R["construct → Configure<br/>Start → RunFor → Dispose"]
   R --> U["sim.Dispose()<br/>pack.Dispose() (ALC unloads)"]
   U -->|"new build"| L2["new SimulatorPackage(newPath)"]
   L2 --> D

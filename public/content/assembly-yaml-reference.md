@@ -18,7 +18,7 @@ Simulator:
   Services:
     - Name: Tracker                    # instance name (referenced by Deps)
       Type: Demo.DemoService           # fully-qualified type (must implement IService)
-      # Config: { … }                  # optional [Config] values for the service
+      # Config: { … }                  # optional [Parameter] values for the service
 
   Sites:
     - Name: Main                       # site (one thread, one event queue)
@@ -26,7 +26,7 @@ Simulator:
       Models:
         - Name: Plant1                 # instance name (path segment)
           Type: Demo.Plant             # fully-qualified type (must implement IModel)
-          Config: { Capacity: 5 }      # [Config] members, key → scalar
+          Config: { Capacity: 5 }      # [Parameter] members, key → scalar
           Models:                      # containment: one entry per Container<T> field
             - Units:                   # <containerField>: [ child nodes ]
                 - Name: UnitA
@@ -60,7 +60,7 @@ unique and are what `Refs` target.
 |---|---|---|---|
 | `Name` | **yes** | — | Instance name; referenced from a model's or another service's `Deps`. |
 | `Type` | **yes** | — | Fully-qualified type; must implement `IService` and have a `(IClock, ILogger)` ctor. |
-| `Config` | no | *(none)* | Map of `[Config]` key → scalar for the service. |
+| `Config` | no | *(none)* | Map of `[Parameter]` key → scalar for the service (optional; an omitted key uses the parameter's attribute default). |
 | `Deps` | no | *(none)* | **Service→service deps.** Same shape as a model's `Deps` — a list of `{ <serviceRefMember>: serviceName }` binding a `[ServiceRef]` member to another service. Cycles are allowed (A→B and B→A): every service is constructed before any dep is bound. |
 
 ## `Sites[]`
@@ -79,12 +79,12 @@ Each node describes one model instance and its subtree.
 |---|---|---|---|
 | `Name` | **yes** | — | Instance name; a segment of the dotted path. |
 | `Type` | **yes** | — | Fully-qualified type; must implement `IModel` and have a `(IClock, IScheduler, ILogger)` ctor. |
-| `Config` | no | *(none)* | Map of `[Config]` key → scalar. |
+| `Config` | no | *(none)* | Map of `[Parameter]` key → scalar (optional; an omitted key uses the parameter's attribute default, or errors if the parameter is `Required`). |
 | `Models` | no | *(none)* | **Containment.** A list of `{ <containerField>: [ child nodes ] }`; each key names a `Container<T>` field on this type. |
 | `Refs` | no | *(none)* | **References.** A list of `{ <referenceField>: [ dotted.paths ] }`; each key names a `Reference<T>` field, each value a target instance path. |
 | `Deps` | no | *(none)* | **Service deps.** A list of `{ <serviceRefMember>: serviceName }` binding a `[ServiceRef]` member to a service instance. |
 
-`Config` values are scalars (numbers, strings, bools) bound into `[Config]` members. `Models`/`Refs`/`Deps` are
+`Config` values are scalars (numbers, strings, bools) bound into `[Parameter]` members. `Models`/`Refs`/`Deps` are
 lists of single-key maps so one node can populate several fields. See
 **[models & containment](#/guide/models-and-containment)** and **[associations](#/guide/associations)**.
 
@@ -109,7 +109,7 @@ so there is no cascade — fix the reported id and rebuild.
 | **SIM012** | Invalid `[ServiceRef]` dependency member. | The `Deps` key doesn't name a `[ServiceRef]` member on the type — check the member and its attribute. |
 | **SIM013** | Unknown service. | The dependency names a service not declared under `Services` — add it or fix the name. |
 | **SIM014** | Service type mismatch. | The named service isn't assignable to the `[ServiceRef]` member — bind a compatible service. |
-| **SIM015** | Unknown config key *(warning)*. | A `Config` key has no matching `[Config]` member — remove it, or add/rename the member. |
+| **SIM015** | Unknown config key *(warning)*. | A `Config` key has no matching `[Parameter]` member — remove it, or add/rename the member. |
 | **SIM020** | Unsupported `[Plottable]` member type. | Make the plottable member a readable **numeric**, **bool**, or **enum** property. |
 
 > IDs **SIM016–SIM019** are unassigned. SIM001–SIM015 come from the simulator generator; SIM020 from the
