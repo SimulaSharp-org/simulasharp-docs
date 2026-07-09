@@ -40,8 +40,9 @@ Because a period is *real* time, choosing one is a real-time-systems decision, n
 - **Match the period to the physics, not to "fast."** Sample and integrate at the rate the dynamics need — a thermal
   mass at 10 Hz, a control loop at 100 Hz–1 kHz — not faster "to be safe." Every µs of period is a µs of real budget on
   that core.
-- **Fewer, coarser periodics beat many fine ones.** Each running site busy-spins a core; each periodic is work in that
-  core's budget. Consolidate where you can.
+- **Fewer, coarser periodics beat many fine ones.** A site parks when idle, but each periodic is real work its core must
+  finish before the next one is due; the sum of a busy site's periodics competes for one core's real-time budget.
+  Consolidate where you can.
 
 > **Consequence for design.** The sum of one site's periodic work, per unit real time, must fit in real time on one
 > core. If it doesn't, the site lags and bursts. The fix is a cheaper handler, a longer period, or

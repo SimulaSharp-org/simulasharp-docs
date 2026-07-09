@@ -39,9 +39,11 @@ The key consequence: because a site is *one thread*, everything that happens ins
 the same site never run at the same instant. Two models on the same site never touch shared state concurrently. There is
 nothing to lock, because there is nothing to race.
 
-## The run loop: busy-spin, on purpose
+## The run loop: park when idle, woken on time
 
-While the clock runs, the site's thread does the same three things forever:
+While the clock runs, the site's thread does the same thing forever — drain the inbox, fire everything due — then,
+instead of spinning a core waiting for the next event, it **parks** and lets the clock wake it exactly when that event
+comes due:
 
 ```mermaid
 flowchart TB
@@ -49,59 +51,66 @@ flowchart TB
   PARK --> START
   START -->|yes| DRAIN["drain inbox:<br/>while TryDequeue&#40;work&#41; work&#40;&#41;"]
   DRAIN --> PROC["_events.ProcessDue&#40;clock.SimNowUs&#41;"]
-  PROC --> SPIN["Thread.SpinWait&#40;1&#41;"]
-  SPIN --> START
+  PROC --> NEXT{"next event?"}
+  NEXT -->|"≤ 200 µs away"| SPIN["Thread.SpinWait&#40;1&#41;"] --> START
+  NEXT -->|"further off / none"| IDLE["publish next-due,<br/>_resume.WaitOne&#40;backstop&#41;<br/>park — 0% CPU"] --> START
 ```
 
-That is the whole loop, straight from the source:
+The heart of it, straight from the source:
 
 ```csharp
-while (!_disposed)
+_events.ProcessDue(_clock.SimNowUs);              // fire everything now due
+if (!_inbox.IsEmpty) continue;                    // work landed while processing — go again
+
+long nextDueUs = _events.PeekNextDueTime();       // -1 when nothing is scheduled
+long waitUs = nextDueUs < 0 ? BackstopMs * 1000L : nextDueUs - _clock.SimNowUs;
+if (waitUs <= SpinBudgetUs)                        // event imminent (≤ 200 µs)
+    Thread.SpinWait(1);                            //   spin for the tightest latency
+else
 {
-    if (!_running) { _resume.WaitOne(); continue; }
-
-    while (_inbox.TryDequeue(out var work))
-        work();                       // cross-thread work, on THIS thread
-
-    _events.ProcessDue(_clock.SimNowUs);   // fire everything now due
-
-    Thread.SpinWait(1);
+    _nextWakeUs = nextDueUs;                       // tell the clock when to wake me
+    _resume.WaitOne(backstop);                     // park — 0% CPU until then
 }
 ```
 
-**Why busy-spin instead of a timed wait?** Because the simulation is [hard real time at
-microsecond resolution](#/guide/time-and-clock). A timed wait (`Thread.Sleep`, a timer, a condition variable with a
-deadline) gives you the OS scheduler's granularity — typically ~1–15 ms on Windows — which is three to four orders of
-magnitude too coarse for a µs-accurate horizon. A busy-spin re-reads the horizon and re-checks the queue as fast as the
-core will let it, so an event due at horizon *T* fires within a spin of *T*, not at the next OS tick.
+**Who wakes a parked site — on time?** The **clock thread**. It is the sole, continuously advancing writer of the
+[horizon](#/guide/time-and-clock), so it already knows the current sim time to the microsecond. Each tick, after it
+publishes the horizon, it signals any site whose published `_nextWakeUs` has come due. That gives **sub-microsecond wake
+precision without the site spinning** — the accuracy of a busy-spin, at the CPU cost of a sleep.
 
-The spin is also what keeps a site **responsive to ad-hoc work**. Another thread can `Post` into the inbox at any
-instant; because the loop comes back around in nanoseconds, that work is picked up almost immediately rather than
-waiting for a timer to elapse.
+Three things release a park, so a site never sleeps through work:
+
+- the **clock** signals it when its next scheduled event comes due (the on-time wake);
+- a **`Post`/`Inject`** from another thread signals it immediately, so injected work is picked up at once;
+- a **clock pause** signals it, so it observes the stop promptly.
+
+The timed `WaitOne(backstop)` is only a safety net (capped at `BackstopMs`) so nothing can ever sleep blind. Work due
+within `SpinBudgetUs` (200 µs) is spun for rather than parked, shaving even the wake latency off the most imminent
+events — which also covers a manual/batch clock whose horizon is already at or past the due time.
 
 > **Key points**
 > - One thread per site ⇒ intra-site execution is serialized and lock-free.
-> - Busy-spin ⇒ µs-accurate firing and immediate pickup of injected work.
-> - The trade is a hot core per running site. This is deliberate: you buy latency and accuracy with CPU. Choose your
->   [topology](#/guide/choosing-a-topology) with that cost in mind — one site per core-worth of subsystems, not one site
->   per model.
+> - **Idle sites park (0% CPU); the clock wakes them precisely on time.** You get µs-accurate firing *and* immediate
+>   pickup of injected work, without a hot core per site — so many sites (and blocking-I/O service threads) coexist
+>   without starving each other. The one continuously spinning thread is the clock itself.
+> - Still choose your [topology](#/guide/choosing-a-topology) deliberately, but the old "a hot core per running site"
+>   tax is gone.
 
 ## Parking while paused
 
-A busy-spin that ran while the clock was paused would burn a core for nothing. It doesn't. The site subscribes to the
-clock's `Started`/`Stopped` events at `Start()`:
+Parking is also how a paused clock costs nothing. The site subscribes to the clock's `Started`/`Stopped` events at
+`Start()`:
 
-- On **`Stopped`**, `_running` flips to `false`; next time around the loop the thread calls `_resume.WaitOne()` and
-  **parks** on an `AutoResetEvent`, consuming zero CPU.
-- On **`Started`**, the handler sets `_running = true` and signals `_resume`, and the thread falls back into the hot
-  loop.
+- On **`Stopped`**, `_running` flips to `false` and `_resume` is signalled; next time around the loop the thread calls
+  `_resume.WaitOne()` and **parks** on an `AutoResetEvent`, consuming zero CPU.
+- On **`Started`**, the handler sets `_running = true` and signals `_resume`, and the thread falls back into the loop.
 
 ```mermaid
 stateDiagram-v2
   [*] --> Parked
-  Parked --> Spinning: clock Started → _resume.Set()
-  Spinning --> Parked: clock Stopped → _running=false → WaitOne()
-  Spinning --> [*]: Dispose() / Stop()
+  Parked --> Running: clock Started → _resume.Set()
+  Running --> Parked: clock Stopped → _running=false → WaitOne()
+  Running --> [*]: Dispose() / Stop()
   Parked --> [*]: Dispose() (Set + Join)
 ```
 

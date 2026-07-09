@@ -55,8 +55,9 @@ flowchart TB
 | You must | nothing | not block the site — [coroutine `Await`](#/guide/coroutines) |
 
 Neither column ever needs a lock. The trade is **parallelism vs call cost**: a separate site buys you a core running in
-parallel, at the price of a marshal (and asynchrony) on every call that crosses the seam. A hot busy-spinning site also
-costs a core whether or not it's doing much — so *one site per core-worth of subsystems, not one site per model*.
+parallel, at the price of a marshal (and asynchrony) on every call that crosses the seam. Idle sites park (0% CPU), so
+an *idle* extra site is cheap — but a *busy* one still needs a core's worth of real-time budget, so size by load:
+*one site per core-worth of active subsystems, not one site per model*.
 
 ## The decision: same site or separate?
 

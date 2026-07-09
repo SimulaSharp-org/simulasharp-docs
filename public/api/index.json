@@ -2,16 +2,16 @@
   "generated": "2026-07-09",
   "assemblies": [
     {
-      "file": "SimulaSharp.Kernel.xml",
-      "name": "SimulaSharp.Kernel"
+      "name": "SimulaSharp.Kernel",
+      "file": "SimulaSharp.Kernel.xml"
     },
     {
-      "file": "SimulaSharp.CodeGen.xml",
-      "name": "SimulaSharp.CodeGen"
+      "name": "SimulaSharp.CodeGen",
+      "file": "SimulaSharp.CodeGen.xml"
     },
     {
-      "file": "SimulaSharp.Hosting.xml",
-      "name": "SimulaSharp.Hosting"
+      "name": "SimulaSharp.Hosting",
+      "file": "SimulaSharp.Hosting.xml"
     }
   ]
 }

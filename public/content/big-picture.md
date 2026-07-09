@@ -24,8 +24,9 @@ Each site reads the horizon and decides for itself what is now due.
 ## Work runs on SimSites — one thread each
 
 A **SimSite** ([`SimSite`](#/api/type/SimulaSharp.Kernel.Services.SimSite)) is an independent scheduling domain: **one
-thread, one event queue**. While the clock is running, a site busy-spins: read the horizon, fire everything now due,
-repeat. Everything a site does happens on that one thread, so within a site there is **no concurrency and no locking**.
+thread, one event queue**. While the clock is running, a site fires everything now due, then parks until its next event
+— the clock wakes it precisely on time (0% CPU while idle). Everything a site does happens on that one thread, so within
+a site there is **no concurrency and no locking**.
 
 Parallelism comes from having **several sites**. A model tree is partitioned into sites (you decide how — see
 [choosing a topology](#/guide/choosing-a-topology)); each site runs in parallel with the others.

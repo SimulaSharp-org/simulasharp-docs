@@ -1258,6 +1258,28 @@
             is one (clock-ungated, no queue).
             </summary>
         </member>
+        <member name="T:SimulaSharp.Kernel.Services.IHorizonWaiter">
+            <summary>
+            A site that asks the clock to wake it at a precise horizon. The <see cref="T:SimulaSharp.Kernel.Services.SimClock"/> is the sole,
+            continuously advancing horizon writer, so it can release a parked site the instant the horizon
+            reaches <see cref="P:SimulaSharp.Kernel.Services.IHorizonWaiter.NextWakeUs"/> — giving sub-microsecond wake precision without the site
+            busy-spinning and without depending on OS timer granularity (a stock Windows timed wait can be off
+            by ~15 ms). Sites register with <see cref="M:SimulaSharp.Kernel.Services.SimClock.RegisterWaiter(SimulaSharp.Kernel.Services.IHorizonWaiter)"/> while running.
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.IHorizonWaiter.NextWakeUs">
+            <summary>
+            Absolute sim-time (µs) this site wants to be woken at, or <see cref="F:System.Int64.MaxValue"/> when it is
+            not waiting on a timed event (parked for another reason, or spinning). Read by the clock thread
+            with volatile semantics; written by the site thread before it parks.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IHorizonWaiter.WakeFromClock">
+            <summary>
+            Called by the clock thread once the horizon reaches <see cref="P:SimulaSharp.Kernel.Services.IHorizonWaiter.NextWakeUs"/>: clears the request
+            (so it is not signalled again) and releases the site's run loop.
+            </summary>
+        </member>
         <member name="T:SimulaSharp.Kernel.Services.IScheduler">
             <summary>
             The sim-time scheduling surface a model uses to run work on its own SimSite. Extends
@@ -1532,6 +1554,13 @@
             wakes as soon as the run boundary (or any freeze) is reached.
             </summary>
         </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimClock._waiters">
+            <summary>
+            Sites registered to be woken precisely when the horizon reaches their next event. Copy-on-write:
+            registration/removal is rare (site lifecycle) and takes <see cref="F:SimulaSharp.Kernel.Services.SimClock._waitersLock"/>; the clock
+            thread reads the array lock-free on every tick.
+            </summary>
+        </member>
         <member name="E:SimulaSharp.Kernel.Services.SimClock.Started">
             <inheritdoc/>
         </member>
@@ -1556,6 +1585,18 @@
         </member>
         <member name="P:SimulaSharp.Kernel.Services.SimClock.IsRunning">
             <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.RegisterWaiter(SimulaSharp.Kernel.Services.IHorizonWaiter)">
+            <summary>
+            Registers a site to receive precise horizon wake-ups (called from <see cref="M:SimulaSharp.Kernel.Services.SimSite.Start"/>).
+            Idempotent-safe for the caller: a site registers once when its thread starts.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.UnregisterWaiter(SimulaSharp.Kernel.Services.IHorizonWaiter)">
+            <summary>Unregisters a site (called from <see cref="M:SimulaSharp.Kernel.Services.SimSite.Stop"/>) so a stopped site is never signalled.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.SignalDueWaiters(System.Int64)">
+            <summary>Wakes every registered site whose next event has come due at horizon <paramref name="h"/>.</summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.SimClock.SegmentUs">
             <summary>
@@ -1599,19 +1640,42 @@
             site's thread, so the event queue is only ever touched single-threaded.
             </para>
             <para>
-            <b>Execution:</b> while the clock is running the site <em>busy-spins</em> — it
-            reads the clock's horizon, fires everything now due, and loops. A busy-spin
-            (rather than a timed wait) is required for microsecond-accurate hard real-time
-            and to stay responsive to ad-hoc work injected by other threads at any moment.
-            While the clock is paused the site blocks, consuming no CPU.
+            <b>Execution:</b> while the clock is running the site reads the clock's horizon,
+            fires everything now due, and loops. When it falls idle it <em>parks</em> (0 CPU)
+            rather than busy-spinning, so it no longer starves the other site threads or the
+            external-I/O threads under load. The on-time wake is delivered by the clock itself
+            — the sole, continuously advancing horizon writer — which releases the site the
+            instant the horizon reaches its next event (<see cref="T:SimulaSharp.Kernel.Services.IHorizonWaiter"/>), giving
+            sub-µs precision that does not depend on OS timer granularity. A park is also cut
+            short by injected inbox work and by a clock pause; the timed wait is only a
+            backstop. Work due within <see cref="F:SimulaSharp.Kernel.Services.SimSite.SpinBudgetUs"/> is spun for, shaving the wake
+            latency off the most imminent events. While the clock is paused the site blocks,
+            consuming no CPU. See <see cref="M:SimulaSharp.Kernel.Services.SimSite.RunLoop"/> for the spin/park policy.
             </para>
             </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimSite.SpinBudgetUs">
+            <summary>Spin (rather than park) when the next event is within this many µs — keeps hard-real-time latency for
+            imminent work while releasing the core when the site is genuinely idle.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimSite.BackstopMs">
+            <summary>Backstop cap (ms) on a park's timed wait. The clock delivers the real, on-time wake; this only
+            bounds how long an idle site sleeps before it re-checks state, so nothing ever sleeps blind.</summary>
         </member>
         <member name="F:SimulaSharp.Kernel.Services.SimSite._inbox">
             <summary>Cross-thread work destined for this site's thread (lock-free).</summary>
         </member>
         <member name="F:SimulaSharp.Kernel.Services.SimSite._resume">
-            <summary>Parks the run loop while the clock is paused; released on resume/stop.</summary>
+            <summary>Parks the run loop while the clock is paused or the site is idle; released on
+            resume/stop, on any cross-thread inbox enqueue, and by the clock when the next event comes due.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimSite._wakeClock">
+            <summary>The concrete clock when it supports precise horizon wake-ups (it always does today);
+            null only if some other <see cref="T:SimulaSharp.Kernel.Services.IClock"/> is supplied, in which case the timed backstop drives waking.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimSite._nextWakeUs">
+            <summary>Absolute sim-time (µs) the clock should wake this site at, or <see cref="F:System.Int64.MaxValue"/> when the
+            site is not parked on a timed event. Written by this thread before parking; read by the clock thread.</summary>
         </member>
         <member name="P:SimulaSharp.Kernel.Services.SimSite.Name">
             <summary>Human-readable site name (used for the thread name and diagnostics).</summary>
@@ -1672,11 +1736,29 @@
         <member name="M:SimulaSharp.Kernel.Services.SimSite.InjectAsync``1(System.Func{``0})">
             <inheritdoc/>
         </member>
+        <member name="P:SimulaSharp.Kernel.Services.SimSite.SimulaSharp#Kernel#Services#IHorizonWaiter#NextWakeUs">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.SimulaSharp#Kernel#Services#IHorizonWaiter#WakeFromClock">
+            <inheritdoc/>
+        </member>
         <member name="M:SimulaSharp.Kernel.Services.SimSite.RunLoop">
             <summary>
-            Busy-spins while running: drain the inbox, then fire everything due at the
-            clock's current horizon. Parks on <see cref="F:SimulaSharp.Kernel.Services.SimSite._resume"/> while paused so a
-            stopped simulation costs nothing.
+            While running: drain the inbox, then fire everything due at the clock's current horizon.
+            <para>
+            When the site falls idle (inbox empty, nothing imminently due) it <em>parks</em> on
+            <see cref="F:SimulaSharp.Kernel.Services.SimSite._resume"/> instead of spinning, releasing the core for the other sites and for
+            I/O-bound work on other threads (a blocking ZMQ/serial read, say). It publishes the next event's
+            due time in <see cref="F:SimulaSharp.Kernel.Services.SimSite._nextWakeUs"/> and the clock — the sole horizon writer — <c>Set</c>s
+            <see cref="F:SimulaSharp.Kernel.Services.SimSite._resume"/> the instant the horizon reaches it, so the wake is on time to sub-µs without
+            busy-spinning or trusting the OS timer. The park is <em>also</em> released by a cross-thread inbox
+            enqueue (<see cref="M:SimulaSharp.Kernel.Services.SimSite.Post(System.Action)"/>/<see cref="M:SimulaSharp.Kernel.Services.SimSite.InjectAsync``1(System.Func{``0})"/>) and by a clock pause; the timed
+            <c>WaitOne</c> is only a <see cref="F:SimulaSharp.Kernel.Services.SimSite.BackstopMs"/> safety net so nothing ever sleeps blind (and it
+            drives waking at all should some non-<see cref="T:SimulaSharp.Kernel.Services.SimClock"/> clock be used). Work due within
+            <see cref="F:SimulaSharp.Kernel.Services.SimSite.SpinBudgetUs"/> is spun for, shaving the wake latency off the
+            most imminent events (and covering manual/batch clocks whose horizon is already at/past due).
+            </para>
+            While the clock is paused the site blocks on <see cref="F:SimulaSharp.Kernel.Services.SimSite._resume"/>, consuming no CPU.
             </summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.SimSite.Dispose">
