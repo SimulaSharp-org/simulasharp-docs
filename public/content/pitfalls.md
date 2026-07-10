@@ -65,11 +65,11 @@ private IEnumerator<SimYield> Process()
 }
 ```
 
-> **The one legitimate blocking loop.** Genuinely external I/O — a socket to real hardware, a HIL link — *does* need a
-> long-running loop, and it must live **outside** sim time. That is what a
-> [`LooselyCoupledServiceBase`](#/guide/services) is for: it runs on its **own** clock-ungated thread (a
-> [`LooselyCoupledSite`](#/guide/sites-and-dispatch)), never a SimSite, so its loop never freezes a subtree. Never put
-> external/blocking I/O on a SimSite; put it there instead.
+> **The one legitimate blocking read.** Genuinely external I/O — a socket to real hardware, a HIL link — *does* need a
+> blocking read that lives **outside** sim time. That is what a [`LooselyCoupledServiceBase`](#/guide/services) is for:
+> it runs its reader on its **own** thread and marshals inbound work to a clock-ungated dispatcher
+> ([`LooselyCoupledSite`](#/guide/sites-and-dispatch)), never a SimSite, so the blocking read never freezes a subtree.
+> Never put external/blocking I/O on a SimSite; put it there instead.
 
 ---
 

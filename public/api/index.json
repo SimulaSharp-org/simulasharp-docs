@@ -1,4 +1,5 @@
 {
+  "generated": "2026-07-10",
   "assemblies": [
     {
       "file": "SimulaSharp.Kernel.xml",
@@ -12,6 +13,5 @@
       "file": "SimulaSharp.Hosting.xml",
       "name": "SimulaSharp.Hosting"
     }
-  ],
-  "generated": "2026-07-09"
+  ]
 }

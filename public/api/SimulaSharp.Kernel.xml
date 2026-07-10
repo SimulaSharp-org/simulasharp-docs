@@ -774,32 +774,54 @@
             </summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase">
-            <summary>
-            Base for a <b>clock-ungated</b> service — one that owns external I/O (a hardware link, an
-            out-of-process feed) that must run outside simulation time and act on the run's start/stop, e.g.
-            an EGSE that halts/unhalts a real OBC in lockstep with the sim. It runs on a
-            <see cref="T:SimulaSharp.Kernel.Services.LooselyCoupledSite"/> (its own dedicated thread, never gated by the clock) rather than
-            a <see cref="T:SimulaSharp.Kernel.Services.SimSite"/>.
-            <para>
-            You implement <see cref="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase._EntryPoint"/> — the thread's loop. Inside it, call
-            <see cref="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.ServiceInbox"/> to run cross-thread work marshalled to this service (its generated
-            <c>[ServiceRequest]</c>/<c>[ServiceEvent]</c> plumbing), and <c>await</c>
-            <see cref="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.WaitRunning"/> to gate on the clock. The canonical shape:
-            <code>
-            protected override async Task _EntryPoint()
-            {
-                Connect(); Identify(); Halt();                 // setup; hardware halted
-                while (!await WaitRunning())                    // false = clock running; true = disposing
-                {
-                    Unhalt();                                   // rising edge — hardware in lockstep
-                    while (TimeKeeper.IsRunning &amp;&amp; !Stopping) { PumpLink(); ServiceInbox(); }
-                    Halt();                                     // falling edge — freeze with the sim
-                }
-                Close();
-            }
-            </code>
-            </para>
-            </summary>
+             <summary>
+             Base for a <b>clock-ungated</b> service — one that owns external I/O (a hardware link, an
+             out-of-process feed) that runs outside simulation time and acts on the run's start/stop, e.g. an
+             EGSE that halts/unhalts a real OBC in lockstep with the sim. Its <see cref="P:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.Site"/> is a
+             <see cref="T:SimulaSharp.Kernel.Services.LooselyCoupledSite"/>: a dedicated <b>dispatcher thread</b> that serially runs the work
+             marshalled to it (its generated <c>[ServiceRequest]</c>/<c>[ServiceEvent]</c> plumbing, plus
+             anything the service <c>Post</c>s) and sleeps when idle. There is no author-written loop.
+             <para>
+             The design is an <b>actor with its own I/O threads</b>:
+             <list type="bullet">
+               <item><b>Dispatcher</b> (the site thread) — owns the service's single-threaded state and does
+               <em>outbound</em> sends <b>inline</b> from a marshalled request handler (a different socket than
+               the reader, so it never contends with a read). No locks: all state lives here.</item>
+               <item><b>Reader thread(s)</b> — the service spins these itself (a blocking socket read) and hands
+               inbound work back to the dispatcher via <see cref="P:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.Site"/><c>.Post(...)</c>. Bound to the run via a
+               <see cref="T:System.Threading.CancellationTokenSource"/>: (re)spawn in <see cref="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.OnRunStarted"/>,
+               cancel + join in <see cref="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.OnRunStopped"/>.</item>
+               <item><b>Control plane</b> — <see cref="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.OnRunStarted"/>/<see cref="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.OnRunStopped"/> fire
+               <em>inline on the clock thread</em> (not the dispatcher), so a halt/unhalt over an independent
+               control link is immediate and never queued behind data work.</item>
+             </list>
+             The canonical shape:
+             <code>
+             public override void Configure() => _link = Connect();        // open sockets; hardware halted
+            
+             protected override void OnRunStarted()                        // clock thread: unhalt + start reading
+             {
+                 _link.Unhalt();
+                 _rx = new CancellationTokenSource();
+                 _rxThread = new Thread(() => ReadLoop(_rx.Token)) { IsBackground = true };
+                 _rxThread.Start();
+             }
+             protected override void OnRunStopped()                        // clock thread: halt + stop reading
+             {
+                 _link.Halt(); _rx?.Cancel(); _link.WakeReader(); _rxThread?.Join();
+             }
+            
+             [ServiceRequest] protected void Handle_Ch0Tx(byte[] f) =&gt; _link.Write(0, f);  // dispatcher: inline send
+             private void ReadLoop(CancellationToken ct)
+             {
+                 while (!ct.IsCancellationRequested &amp;&amp; _link.TryRead(out var ch, out var frame))
+                     Site.Post(() =&gt; Route(ch, frame));                    // hand inbound to the dispatcher
+             }
+             </code>
+             (The link's read and write paths must be independent — separate sockets — because the reader thread
+             and the dispatcher touch them concurrently.)
+             </para>
+             </summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.#ctor(SimulaSharp.Kernel.Services.IClock,SimulaSharp.Kernel.Logging.ILogger,System.String)">
             <param name="timeKeeper">The shared simulation clock (read/observe).</param>
@@ -815,42 +837,31 @@
         <member name="P:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.Site">
             <inheritdoc/>
         </member>
-        <member name="P:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.Stopping">
-            <summary>True once the service is being torn down — check it in inner loops so they exit.</summary>
-        </member>
-        <member name="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase._EntryPoint">
+        <member name="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.OnRunStarted">
             <summary>
-            The thread's main loop, run on the site's dedicated thread under a single-thread context so
-            <c>await</c>s resume here. Do external I/O, call <see cref="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.ServiceInbox"/> to run marshalled
-            work, and <c>await</c> <see cref="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.WaitRunning"/> to gate on the clock.
+            Called <b>inline on the clock thread</b> when the run starts or resumes. Override to bring the
+            external link into lockstep — e.g. unhalt the hardware and (re)spawn the reader thread. It runs
+            off the dispatcher on purpose, so it can act immediately over an independent control link.
             </summary>
         </member>
-        <member name="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.ServiceInbox">
+        <member name="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.OnRunStopped">
             <summary>
-            Runs all currently-queued cross-thread work (this service's marshalled requests / event
-            deliveries) inline on this thread. Call it from <see cref="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase._EntryPoint"/> wherever you want to
-            service pending work.
+            Called <b>inline on the clock thread</b> when the run pauses. Override to freeze the link — e.g.
+            halt the hardware and cancel + join the reader thread.
             </summary>
-        </member>
-        <member name="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.WaitRunning">
-            <summary>
-            Await in the loop to gate on the run state: the task yields <c>false</c> when the clock is
-            running (proceed), or <c>true</c> when the service is being disposed (end-of-life — break the
-            loop and tear down). Completes immediately if already running or already stopping; otherwise
-            parks until the clock starts or shutdown is requested. Its continuation resumes on this thread.
-            </summary>
-        </member>
-        <member name="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.RunEntryPoint">
-            <summary>Wraps the author's <see cref="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase._EntryPoint"/> so a fault is logged, not fatal to the thread.</summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.Configure">
             <summary>
-            Called by the framework after construction, assembly wiring and config are complete. The site
-            thread has not started yet; override for pre-run setup that does not need the loop running.
+            Called by the framework after construction, assembly wiring and config are complete. The
+            dispatcher thread has not started yet; open sockets / do pre-run setup here.
             </summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.Dispose">
-            <summary>Deinitialization hook. The site thread is already stopped by the time this runs.</summary>
+            <summary>
+            Deinitialization hook, run with the dispatcher thread already stopped. Do the <b>final</b>
+            teardown here — close sockets, cancel and join any reader thread (a pause-time
+            <see cref="M:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase.OnRunStopped"/> is not guaranteed on a dispose-while-running).
+            </summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Model.ModelBase">
             <summary>
@@ -1424,18 +1435,19 @@
             </summary>
         </member>
         <member name="P:SimulaSharp.Kernel.Services.ISimulator.Knobs">
-            <summary>The discovered knobs across every model instance (populated by <see cref="!:Initialize"/>).</summary>
+            <summary>The discovered knobs across every model instance (populated when the simulator is constructed).</summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.ISimulator.RegisterKnobChannel(SimulaSharp.Kernel.Knobs.IKnobChannel)">
             <summary>
             Registers a knob channel (the MMI). It receives the discovered knobs and a push
-            on every value change. May be registered before or after <see cref="!:Initialize"/>.
+            on every value change. Knobs are discovered at construction, so a channel registered any time
+            receives them immediately.
             </summary>
         </member>
         <member name="P:SimulaSharp.Kernel.Services.ISimulator.Plottables">
             <summary>
-            The discovered plot-telemetry points across every model instance (populated by
-            <see cref="!:Initialize"/>), keyed by full dotted instance path. Sample them in one
+            The discovered plot-telemetry points across every model instance (populated when the simulator
+            is constructed), keyed by full dotted instance path. Sample them in one
             mission-time-stamped sweep via <see cref="M:SimulaSharp.Kernel.Services.ISimulator.SamplePlottables"/>.
             </summary>
         </member>
@@ -1495,34 +1507,30 @@
         </member>
         <member name="T:SimulaSharp.Kernel.Services.LooselyCoupledSite">
             <summary>
-            A <b>clock-ungated</b> scheduling domain for external I/O (e.g. a hardware link): a dedicated
-            thread that is <em>not</em> driven by the simulation horizon and <em>never</em> parks when the
-            clock pauses. Unlike a <see cref="T:SimulaSharp.Kernel.Services.SimSite"/> it has no sim-time queue and does not auto-drain —
-            the owning <see cref="T:SimulaSharp.Kernel.Model.LooselyCoupledServiceBase"/> supplies the loop (its
-            <c>_EntryPoint</c>) and decides when to service the inbox.
+            A <b>clock-ungated</b> dispatcher site for external I/O (e.g. a hardware link): a dedicated thread
+            that is a pure <b>serial executor</b> of the work marshalled to it. It is <see cref="T:SimulaSharp.Kernel.Services.SimSite"/>'s
+            inbox mechanism with the clock and the sim-time event queue removed — the thread simply drains its
+            lock-free <see cref="T:SimulaSharp.Kernel.Services.IDispatcher"/> inbox, then <b>sleeps until the next <see cref="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.Post(System.Action)"/> wakes it</b>
+            (there is no horizon to advance on, so nothing else can wake it).
             <para>
-            The thread runs the entry point under a <b>single-thread synchronization context</b>, so
-            <c>await</c>s inside the loop resume on this same thread — the socket/inbox state it touches
-            stays single-threaded, no locks. Cross-thread work arrives through the lock-free
-            <see cref="T:SimulaSharp.Kernel.Services.IDispatcher"/> inbox and is executed only when the loop calls <c>ServiceInbox()</c>.
+            Because every item runs on this one thread, the owning service's state (routing tables, sequence
+            counters, an outbound socket written inline from a marshalled request) stays single-threaded with no
+            locks. Blocking I/O that must <em>read</em> concurrently belongs on a separate reader thread the
+            service owns, which hands inbound work back through <see cref="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.Post(System.Action)"/>.
             </para>
             </summary>
         </member>
-        <member name="T:SimulaSharp.Kernel.Services.LooselyCoupledSite.PumpContext">
-            <summary>A single-threaded message pump: <see cref="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.PumpContext.Post(System.Threading.SendOrPostCallback,System.Object)"/> queues a continuation, <see cref="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.PumpContext.Pump"/> runs them on the calling thread until <see cref="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.PumpContext.Complete"/>.</summary>
+        <member name="F:SimulaSharp.Kernel.Services.LooselyCoupledSite._inbox">
+            <summary>Cross-thread work destined for this site's thread (lock-free).</summary>
         </member>
-        <member name="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.#ctor(System.String,System.Func{System.Threading.Tasks.Task})">
+        <member name="F:SimulaSharp.Kernel.Services.LooselyCoupledSite._resume">
+            <summary>Parks the executor while the inbox is empty; released by every <see cref="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.Post(System.Action)"/> and by <see cref="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.Stop"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.#ctor(System.String)">
             <param name="name">Diagnostic name (used for the thread name).</param>
-            <param name="entryPoint">The loop the thread runs — supplied by the owning service.</param>
         </member>
         <member name="P:SimulaSharp.Kernel.Services.LooselyCoupledSite.Name">
             <inheritdoc/>
-        </member>
-        <member name="P:SimulaSharp.Kernel.Services.LooselyCoupledSite.Stopping">
-            <summary>Cancelled when <see cref="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.Stop"/>/<see cref="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.Dispose"/> is requested — the entry loop's shutdown signal.</summary>
-        </member>
-        <member name="P:SimulaSharp.Kernel.Services.LooselyCoupledSite.IsStopping">
-            <summary>True once shutdown has been requested.</summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.Post(System.Action)">
             <inheritdoc/>
@@ -1533,11 +1541,11 @@
         <member name="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.InjectAsync``1(System.Func{``0})">
             <inheritdoc/>
         </member>
-        <member name="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.DrainInbox">
-            <summary>Runs every currently-queued inbox item on this thread. Called by the owning service's loop.</summary>
-        </member>
         <member name="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.Start">
             <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.Run">
+            <summary>Drain everything queued, then sleep until the next <see cref="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.Post(System.Action)"/> (or <see cref="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.Stop"/>) wakes us.</summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.LooselyCoupledSite.Stop">
             <inheritdoc/>
@@ -1959,12 +1967,12 @@
             </summary>
         </member>
         <member name="F:SimulaSharp.Kernel.Services.SimulatorState.Initial">
-            <summary>Not yet initialized — nothing has been built.</summary>
+            <summary>Transient pre-assembly state; a constructed simulator is already <see cref="F:SimulaSharp.Kernel.Services.SimulatorState.Initialized"/>.</summary>
         </member>
         <member name="F:SimulaSharp.Kernel.Services.SimulatorState.Initialized">
             <summary>
-            Models constructed and their containers/references assembled, then config
-            values applied — the result of <see cref="!:ISimulator.Initialize"/>.
+            Models constructed and their containers/references assembled, then parameters
+            applied — the state a freshly-constructed simulator is in (assembled in its constructor).
             </summary>
         </member>
         <member name="F:SimulaSharp.Kernel.Services.SimulatorState.Configured">

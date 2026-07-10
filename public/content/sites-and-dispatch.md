@@ -39,7 +39,7 @@ classDiagram
     sim-paced, clock-driven
   }
   class LooselyCoupledSite {
-    clock-ungated, own loop
+    clock-ungated dispatcher
   }
   IDispatcher <|-- IScheduler
   IDispatcher <|-- IDispatcherSite
@@ -61,8 +61,8 @@ The two concrete sites pick from these:
 - [`SimSite`](#/api/type/SimulaSharp.Kernel.Services.SimSite) implements **`IScheduler`** *and* **`IDispatcherSite`** — the
   full sim-paced site: marshalling, sim-time scheduling, and lifecycle.
 - [`LooselyCoupledSite`](#/api/type/SimulaSharp.Kernel.Services.LooselyCoupledSite) implements only **`IDispatcherSite`** —
-  marshalling + lifecycle, but **no sim-time queue**, because it is [clock-ungated](#/guide/services) and never advances on
-  the horizon.
+  marshalling + lifecycle, but **no sim-time queue**. It is [clock-ungated](#/guide/services): a pure Post-driven
+  serial executor (a dispatcher) that runs marshalled work and sleeps when idle, never advancing on the horizon.
 
 ## Why segregate — what each holder *cannot* do
 

@@ -296,78 +296,102 @@ running **outside** simulation time and act on the run's **start/stop** (e.g. an
 on-board computer in lockstep with the sim). Parking that on a clock pause would freeze the very link you use to *drive*
 the pause.
 
-For those, derive [`LooselyCoupledServiceBase`](#/api/type/SimulaSharp.Kernel.Model.LooselyCoupledServiceBase). It owns a
-[`LooselyCoupledSite`](#/api/type/SimulaSharp.Kernel.Services.LooselyCoupledSite) — a dedicated thread that is **never
-gated by the clock** and **never parks** on pause. See [sites & dispatch](#/guide/sites-and-dispatch) for the site model.
+For those, derive [`LooselyCoupledServiceBase`](#/api/type/SimulaSharp.Kernel.Model.LooselyCoupledServiceBase). Its
+[`LooselyCoupledSite`](#/api/type/SimulaSharp.Kernel.Services.LooselyCoupledSite) is **not** driven by the clock — it is
+a **dispatcher**: a serial-executor thread that runs the work marshalled to it and sleeps when idle. See
+[sites & dispatch](#/guide/sites-and-dispatch) for the site model.
+
+### The model: an actor with its own I/O threads
+
+There is **no author-written loop**. A loosely-coupled service is three cleanly-separated pieces, so every socket and
+all service state stays single-threaded without a lock:
 
 ```mermaid
-flowchart LR
-  subgraph paced ["ServiceBase → SimSite (sim-paced)"]
-    S1["clock pauses ⇒ site parks<br/>work stops with the sim"]
+flowchart TB
+  subgraph svc ["LooselyCoupledService"]
+    D["Dispatcher (site thread)<br/>owns state · inline outbound send<br/>sleeps until Post"]
+    R["Reader thread (you own it)<br/>blocking read → Site.Post(inbound)"]
+    C["OnRunStarted / OnRunStopped<br/>(inline on the clock thread)"]
   end
-  subgraph ungated ["LooselyCoupledServiceBase → LooselyCoupledSite (clock-ungated)"]
-    S2["clock pauses ⇒ loop keeps running<br/>you decide what start/stop means"]
-  end
-  classDef a fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
-  classDef b fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
-  class S1 a;
-  class S2 b;
+  M["models"] -->|"Ch*Tx request (marshalled)"| D
+  R -->|"Post(inbound)"| D
+  C -->|"halt / unhalt · (re)spawn the reader"| HW["control link"]
+  D -->|"write"| TX["TX socket"]
+  R -->|"read"| RX["RX socket"]
+  classDef k fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+  class D,R,C k;
 ```
 
-### The author contract
+- **Dispatcher** (the site thread): runs marshalled `[ServiceRequest]`/`[ServiceEvent]` work and anything you `Post`,
+  serially. It owns the service's state and does **outbound sends inline** from a request handler — over a *different*
+  socket than the reader, so a send never contends with a read.
+- **Reader thread** — you spin it (a blocking socket read) and hand inbound work back to the dispatcher via
+  `Site.Post(...)`. Tie it to the run with a `CancellationTokenSource`: (re)spawn in `OnRunStarted`, cancel + join in
+  `OnRunStopped`.
+- **Control plane** — `OnRunStarted`/`OnRunStopped` fire **inline on the clock thread** (not the dispatcher), so a
+  halt/unhalt over an independent control link is *immediate*, never queued behind data work.
 
-Unlike a sim-paced service (which *arms* work and returns), a loosely-coupled service **owns its thread's loop**. You
-implement three members:
+### The author surface
 
 | Member | What it is |
 |---|---|
-| `protected abstract Task _EntryPoint()` | The thread's main loop. Runs on the site's dedicated thread under a single-thread context, so every `await` resumes **on that same thread** — the socket/inbox state you touch stays single-threaded, no locks. |
-| `protected void ServiceInbox()` | Runs all currently-queued marshalled work (this service's `[ServiceRequest]`/`[ServiceEvent]` deliveries) **inline**, at the point in your loop you choose. Nothing is auto-drained. |
-| `protected Task<bool> WaitRunning()` | `await` it to gate on the run: yields **`false`** when the clock is running (proceed), **`true`** when the service is being disposed (end-of-life → break the loop and tear down). Completes immediately if already running/stopping; otherwise parks until the clock starts or shutdown is requested. |
+| `protected virtual void OnRunStarted()` | Clock started/resumed — inline on the clock thread. Unhalt the hardware and (re)spawn the reader thread. |
+| `protected virtual void OnRunStopped()` | Clock paused — inline on the clock thread. Halt the hardware and cancel + join the reader thread. |
+| `public virtual void Configure()` | After wiring; open sockets here (the dispatcher hasn't started yet). |
+| `public virtual void Dispose()` | Final teardown — close sockets, cancel/join the reader. |
+| `Site` (an `IDispatcherSite`) | The dispatcher. Your generated `Ch*Tx` handlers marshal onto it (inline send); your reader `Post`s inbound onto it. |
 
-Halt/unhalt is expressed *in the loop* — the rising edge (`WaitRunning` returned `false`) and the falling edge
-(`TimeKeeper.IsRunning` goes false) — so there are no separate `OnStarted`/`OnStopped` hooks to keep in sync. The
-canonical shape, as an EGSE would write it:
+The canonical shape, as an EGSE would write it:
 
 ```csharp
-using SimulaSharp.Kernel.Logging;
-using SimulaSharp.Kernel.Model;
-using SimulaSharp.Kernel.Services;
-
 public partial class Egse : LooselyCoupledServiceBase
 {
+    private ILink _link = null!;
+    private CancellationTokenSource? _rx;
+    private Thread? _rxThread;
+
     public Egse(IClock c, ILogger l) : base(c, l, name: "egse") { }
 
-    protected override async Task _EntryPoint()
+    public override void Configure() => _link = Connect();     // open sockets; OBC halted
+
+    protected override void OnRunStarted()                     // clock thread: unhalt + start reading
     {
-        Connect(); Identify(); Halt();                  // setup — the OBC is halted
-        while (!await WaitRunning())                     // false = clock running; true = disposing → exit
-        {
-            Unhalt();                                    // rising edge — hardware in lockstep with the sim
-            while (TimeKeeper.IsRunning && !Stopping)
-            {
-                PumpLink();                              // service the external link
-                ServiceInbox();                          // run any marshalled requests/events
-                await Task.Delay(1);                     // yield; resumes on THIS thread
-            }
-            Halt();                                      // falling edge — freeze with the sim
-        }
-        Close();                                         // end-of-life teardown
+        _link.Unhalt();
+        _rx = new CancellationTokenSource();
+        _rxThread = new Thread(() => ReadLoop(_rx.Token)) { IsBackground = true };
+        _rxThread.Start();
     }
+    protected override void OnRunStopped()                     // clock thread: halt + stop reading
+    {
+        _link.Halt(); _rx?.Cancel(); _link.WakeReader(); _rxThread?.Join();
+    }
+
+    [ServiceRequest] protected void Handle_Ch0Tx(byte[] frame) // dispatcher thread: inline send
+        => _link.Write(0, frame);
+
+    private void ReadLoop(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested && _link.TryRead(out var ch, out var frame))
+            Site.Post(() => Route(ch, frame));                 // hand inbound to the dispatcher
+    }
+    private void Route(int ch, byte[] frame) { /* runs on the dispatcher; routes/publishes to models */ }
+
+    public override void Dispose() { OnRunStopped(); _link.Close(); }
 }
 ```
 
 - **`Site`** is still an `IDispatcherSite`, so the **same** `[ServiceEvent]`/`[ServiceRequest]`/`[ServiceRef]` plumbing
-  works unchanged — a model marshals a request in exactly as it would to a sim-paced service; it just runs when your loop
-  calls `ServiceInbox()`. There is **no `Scheduler`**: a loosely-coupled site has no sim-time queue.
-- **`Stopping`** (a `bool`) flips true when teardown is requested — check it in inner loops so they exit promptly.
+  works unchanged — a model marshals a request in exactly as it would to a sim-paced service; it just runs on the
+  dispatcher. There is **no `Scheduler`**: a loosely-coupled site has no sim-time queue.
+- The link's **read and write paths must be independent** (separate sockets) — the reader thread and the dispatcher
+  touch them concurrently.
 - The **assembly declares it like any other service** (a `Services:` entry); the generator routes it to the clock-ungated
   registration automatically by recognising the base type. Nothing special in the YAML.
 
 > **When to reach for it.** Only when a service owns I/O that genuinely lives *outside* sim time and must react to the
 > run starting/stopping — real hardware links, HIL probes, external feeds. Everything that models the simulated world —
 > including a poll-style request/response device — stays an ordinary sim-paced `ServiceBase`. This is the one place a
-> blocking-ish external loop is legitimate, because it runs on its **own** thread, never a SimSite; see
+> blocking read is legitimate, because it runs on its **own** reader thread, never a SimSite; see
 > [pitfalls](#/guide/pitfalls).
 
 ## Where to go next

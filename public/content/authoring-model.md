@@ -121,8 +121,9 @@ a service **must be `partial`**.
 
 There are **two service kinds**. The `ServiceBase` above is *sim-paced* — its site runs on the clock and parks on
 pause. A service that owns I/O living **outside** sim time (real hardware, a HIL link) instead derives
-[`LooselyCoupledServiceBase`](#/api/type/SimulaSharp.Kernel.Model.LooselyCoupledServiceBase): its site is clock-ungated
-and it drives its own loop. The same `[ServiceEvent]`/`[ServiceRequest]`/`[ServiceRef]` plumbing works on both, and the
+[`LooselyCoupledServiceBase`](#/api/type/SimulaSharp.Kernel.Model.LooselyCoupledServiceBase): its site is a clock-ungated
+dispatcher, with its own I/O reader thread and inline run-state hooks. The same
+`[ServiceEvent]`/`[ServiceRequest]`/`[ServiceRef]` plumbing works on both, and the
 assembly declares them identically.
 
 Full chapter: [services](#/guide/services). The *when* — model vs service — is [model vs service](#/guide/model-vs-service).
