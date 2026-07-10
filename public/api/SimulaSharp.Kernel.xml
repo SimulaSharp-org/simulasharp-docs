@@ -1955,9 +1955,12 @@
         </member>
         <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.Dispose">
             <summary>
-            Tears the simulation down (single-use, no reset): stop every site thread, run
-            each service's then each model's deinit while nothing is executing, then
-            dispose the sites and the clock.
+            Tears the simulation down (single-use, no reset). Order matters for the park-on-idle sites:
+            the clock thread wakes a site by <c>Set()</c>ting its wait handle (per-tick horizon wakes and the
+            stop handler), so it must be fully stopped before those handles are disposed. So: pause the clock
+            (park its thread, and fire the stop handlers under control), stop every site thread, run each
+            service's then each model's deinit while nothing is executing, <b>dispose (join) the clock</b>,
+            then — only now that no thread can touch them — dispose the site wait handles.
             </summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Services.SimulatorState">

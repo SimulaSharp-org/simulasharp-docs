@@ -94,19 +94,24 @@ sequenceDiagram
 
 ## Dispose: the teardown cascade
 
-`Dispose()` tears the simulation down in a deliberate order, with **nothing executing** by the time the deinit runs:
+`Dispose()` tears the simulation down in a deliberate order, with **nothing executing** by the time the deinit runs.
+The order matters because sites [park on idle](#/guide/simsites-and-actors) and are woken by the clock thread — so the
+clock thread must be fully stopped before a site's wait handle is disposed:
 
-1. **Stop every SimSite thread** — so no model code is running.
-2. **Dispose each service.**
-3. **Dispose each model, in reverse registration order** — children before parents, mirroring the depth-first build.
-4. **Dispose the sites**, then **the clock**.
+1. **Pause the clock** — park its thread, so it stops waking sites (and the stop handlers run under control).
+2. **Stop every SimSite thread** — so no model code is running.
+3. **Dispose each service.**
+4. **Dispose each model, in reverse registration order** — children before parents, mirroring the depth-first build.
+5. **Dispose (join) the clock** — *before* the site handles, so no clock-thread wake can outlive them.
+6. **Dispose the sites** — safe now that nothing can wake them.
 
 ```mermaid
 flowchart TB
-  A["stop every SimSite thread"] --> B["dispose each service"]
+  P["pause the clock (park its thread)"] --> A["stop every SimSite thread"]
+  A --> B["dispose each service"]
   B --> C["dispose each model (reverse order)"]
-  C --> D["dispose the sites"]
-  D --> E["dispose the clock"]
+  C --> E["dispose (join) the clock"]
+  E --> D["dispose the sites"]
 ```
 
 There is **no reset**. A simulator (and the clock inside it) is single-use: to run a scenario again from zero, you
