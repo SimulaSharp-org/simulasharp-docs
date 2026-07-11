@@ -52,7 +52,7 @@ public partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBase(c, s
 
     // Charge %, driven by the model. Read-only KNOB (operator watches) AND a PLOTTABLE
     // (host graphs). Both attributes share the one volatile backing field the generator emits.
-    [FloatKnob("Charge", Min = 0, Max = 100, DecimalPlaces = 1, IsReadOnly = true)]
+    [NumberKnob<double>("Charge", Min = 0, Max = 100, DecimalPlaces = 1, IsReadOnly = true)]
     [Plottable("Charge", Unit = "%")]
     public partial double ChargePct { get; set; }
 
@@ -124,7 +124,7 @@ the model instance name, then the member. The read-only knob of the same value i
   published, not pushed* (see [time & the clock](#/guide/time-and-clock)).
 - **Absolute-grid periodics don't drift.** `AddPeriodicEvent` re-arms on an absolute grid, so
   measuring `now − _lastUs` gives you the true elapsed interval even if a fire lands a hair late.
-- **Knob and plottable coexist on one field.** The `[FloatKnob]` materializes the volatile backing
+- **Knob and plottable coexist on one field.** The `[NumberKnob<double>]` materializes the volatile backing
   field; `[Plottable]` only *references* it for its `Sample` delegate — one source of truth, no
   duplication. A read-only float is thus an operator indicator *and* a graphed series at once.
 - **Sampling is pull, not push.** The kernel never streams plot data. You sweep with

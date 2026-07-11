@@ -95,7 +95,7 @@ public partial class Panel(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
 {
     [ServiceRef] public Environment Environment { get; set; } = null!;   // wired by the assembly, by name
 
-    [FloatKnob("Output", Min = 0, Max = 1, DecimalPlaces = 2, IsReadOnly = true)]
+    [NumberKnob<double>("Output", Min = 0, Max = 1, DecimalPlaces = 2, IsReadOnly = true)]
     [Plottable("Output", Unit = "kW")]
     public partial double Output { get; set; }
 

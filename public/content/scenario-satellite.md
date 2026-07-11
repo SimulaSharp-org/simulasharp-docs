@@ -67,7 +67,7 @@ namespace Bird;
 [Contains<Panel>("Panels")]
 public partial class Eps(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    [FloatKnob("Bus voltage", Min = 0, Max = 32, DecimalPlaces = 2, IsReadOnly = true)]
+    [NumberKnob<double>("Bus voltage", Min = 0, Max = 32, DecimalPlaces = 2, IsReadOnly = true)]
     [Plottable("Vbus", Unit = "V")]
     public partial double Vbus { get; set; }
 
@@ -83,7 +83,7 @@ public partial class Eps(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 public partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     [Parameter(1500.0)] public double CapacityWh { get; set; }
-    [FloatKnob("Charge", Min = 0, Max = 100, DecimalPlaces = 1, IsReadOnly = true)]
+    [NumberKnob<double>("Charge", Min = 0, Max = 100, DecimalPlaces = 1, IsReadOnly = true)]
     [Plottable("Charge", Unit = "%")]
     public partial double ChargePct { get; set; }        // integrates net power (see the integrator scenario)
 }
@@ -100,14 +100,14 @@ public partial class Panel(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
 public partial class Adcs(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     [ServiceRef] public Environment Environment { get; set; } = null!;   // reacts to eclipse
-    [IntegerKnob("Mode", Min = 0, Max = 3)] public partial int Mode { get; set; }   // read/write
+    [NumberKnob<int>("Mode", Min = 0, Max = 3)] public partial int Mode { get; set; }   // read/write
     [Plottable("Rate error", Unit = "deg/s")] public partial double RateError { get; set; }
 }
 
 public partial class Wheel(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     [Parameter(0.02)] public double Inertia { get; set; }
-    [FloatKnob("RPM", Min = -6000, Max = 6000, IsReadOnly = true)]
+    [NumberKnob<double>("RPM", Min = -6000, Max = 6000, IsReadOnly = true)]
     [Plottable("RPM")] public partial double Rpm { get; set; }
 }
 

@@ -46,7 +46,7 @@ public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
     private long _lastUs;
     private double _inflow;
 
-    [FloatKnob("Level", Min = 0, Max = 10, DecimalPlaces = 2, IsReadOnly = true)]
+    [NumberKnob<double>("Level", Min = 0, Max = 10, DecimalPlaces = 2, IsReadOnly = true)]
     [Plottable("Level", Unit = "m")]
     public partial double Level { get; set; }
 

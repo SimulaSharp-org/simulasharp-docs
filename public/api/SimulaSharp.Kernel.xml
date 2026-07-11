@@ -157,52 +157,41 @@
         <member name="F:SimulaSharp.Kernel.Attributes.NumberKnobType.Rotary">
             <summary>A rotary dial between the knob's min and max.</summary>
         </member>
-        <member name="T:SimulaSharp.Kernel.Attributes.IntegerKnobAttribute">
+        <member name="T:SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1">
             <summary>
-            Decorates model members that represent integer values to be exposed as knobs in the UI.
+            Decorates a model member that represents a <b>numeric</b> value to be exposed as a knob in the UI. One generic
+            attribute covers every numeric type <typeparamref name="T"/> — there is no separate integer vs floating-point
+            attribute. <see cref="P:SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1.Min"/>/<see cref="P:SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1.Max"/> are typed as <typeparamref name="T"/>, and precision
+            (<see cref="P:SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1.DecimalPlaces"/>) simply carries through: it is a no-op the UI ignores when <typeparamref name="T"/>
+            is an integer type, so the same attribute reads naturally for both <c>[NumberKnob&lt;int&gt;("Mode", Max = 3)]</c>
+            and <c>[NumberKnob&lt;double&gt;("Vbus", Max = 32, DecimalPlaces = 2)]</c>.
             </summary>
+            <typeparam name="T">The numeric CLR type of the member (e.g. <c>int</c>, <c>long</c>, <c>double</c>, <c>float</c>).</typeparam>
             <param name="label">The knob label.</param>
         </member>
-        <member name="M:SimulaSharp.Kernel.Attributes.IntegerKnobAttribute.#ctor(System.String)">
+        <member name="M:SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1.#ctor(System.String)">
             <summary>
-            Decorates model members that represent integer values to be exposed as knobs in the UI.
+            Decorates a model member that represents a <b>numeric</b> value to be exposed as a knob in the UI. One generic
+            attribute covers every numeric type <typeparamref name="T"/> — there is no separate integer vs floating-point
+            attribute. <see cref="P:SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1.Min"/>/<see cref="P:SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1.Max"/> are typed as <typeparamref name="T"/>, and precision
+            (<see cref="P:SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1.DecimalPlaces"/>) simply carries through: it is a no-op the UI ignores when <typeparamref name="T"/>
+            is an integer type, so the same attribute reads naturally for both <c>[NumberKnob&lt;int&gt;("Mode", Max = 3)]</c>
+            and <c>[NumberKnob&lt;double&gt;("Vbus", Max = 32, DecimalPlaces = 2)]</c>.
             </summary>
+            <typeparam name="T">The numeric CLR type of the member (e.g. <c>int</c>, <c>long</c>, <c>double</c>, <c>float</c>).</typeparam>
             <param name="label">The knob label.</param>
         </member>
-        <member name="P:SimulaSharp.Kernel.Attributes.IntegerKnobAttribute.KnobType">
+        <member name="P:SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1.KnobType">
             <summary>How the knob is presented.</summary>
         </member>
-        <member name="P:SimulaSharp.Kernel.Attributes.IntegerKnobAttribute.Min">
-            <summary>Minimum permitted value.</summary>
+        <member name="P:SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1.Min">
+            <summary>Minimum permitted value (unbounded when unset).</summary>
         </member>
-        <member name="P:SimulaSharp.Kernel.Attributes.IntegerKnobAttribute.Max">
-            <summary>Maximum permitted value.</summary>
+        <member name="P:SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1.Max">
+            <summary>Maximum permitted value (unbounded when unset).</summary>
         </member>
-        <member name="T:SimulaSharp.Kernel.Attributes.FloatKnobAttribute">
-            <summary>
-            Decorates model members to be represented as floating-point knobs in the UI.
-            Supports options for input precision, range, and decimal formatting.
-            </summary>
-            <param name="label">The label for the knob.</param>
-        </member>
-        <member name="M:SimulaSharp.Kernel.Attributes.FloatKnobAttribute.#ctor(System.String)">
-            <summary>
-            Decorates model members to be represented as floating-point knobs in the UI.
-            Supports options for input precision, range, and decimal formatting.
-            </summary>
-            <param name="label">The label for the knob.</param>
-        </member>
-        <member name="P:SimulaSharp.Kernel.Attributes.FloatKnobAttribute.KnobType">
-            <summary>How the knob is presented.</summary>
-        </member>
-        <member name="P:SimulaSharp.Kernel.Attributes.FloatKnobAttribute.Min">
-            <summary>Minimum permitted value.</summary>
-        </member>
-        <member name="P:SimulaSharp.Kernel.Attributes.FloatKnobAttribute.Max">
-            <summary>Maximum permitted value.</summary>
-        </member>
-        <member name="P:SimulaSharp.Kernel.Attributes.FloatKnobAttribute.DecimalPlaces">
-            <summary>Number of decimal places shown/accepted.</summary>
+        <member name="P:SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1.DecimalPlaces">
+            <summary>Number of decimal places shown/accepted. A no-op for integer <typeparamref name="T"/>.</summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Attributes.ParameterAttribute">
             <summary>

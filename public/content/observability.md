@@ -18,8 +18,8 @@ flowchart LR
     F1["volatile field<br/>__Speed"]
     F2["volatile field<br/>__Vbus"]
   end
-  F1 -->|"[IntegerKnob]"| K1["Knob"]
-  F2 -->|"[FloatKnob] +<br/>[Plottable]"| K2["Knob"]
+  F1 -->|"[NumberKnob&lt;int&gt;]"| K1["Knob"]
+  F2 -->|"[NumberKnob&lt;double&gt;] +<br/>[Plottable]"| K2["Knob"]
   F2 --> P1["Plottable"]
   K1 --> KL["ISimulator.Knobs"]
   K2 --> KL
@@ -53,8 +53,7 @@ display text) and **`IsReadOnly`** (display-only vs. read/write).
 | Attribute | Target | `KnobKind` | Distinctive options |
 |---|---|---|---|
 | `[TickBoxKnob("…")]` | `partial bool` property | `Bool` | — |
-| `[IntegerKnob("…")]` | `partial` integer property | `Number` | `Min`, `Max` (`long`), `KnobType` |
-| `[FloatKnob("…")]` | `partial` float/double property | `Number` | `Min`, `Max` (`float`), `DecimalPlaces` (default 2), `KnobType` |
+| `[NumberKnob<T>("…")]` | `partial` numeric property | `Number` | `Min`, `Max` (`T`), `DecimalPlaces` (default 2; no-op for integer `T`), `KnobType` |
 | `[TextKnob("…")]` | `partial string` property | `Text` | `MaxLength` (default `int.MaxValue`), `AllowEmpty` (default `true`), `AllowNewLine` (default `false`) |
 | `[TriggerKnob("…")]` | `void Handle_X()` method | `Trigger` | — |
 
@@ -63,7 +62,7 @@ display text) and **`IsReadOnly`** (display-only vs. read/write).
 knob as `Min`/`Max`/`DecimalPlaces`/`MaxLength`/… so a renderer can build the right control without knowing the model.
 
 > **Consequence for design.** A knob's kind is fixed by *which attribute* you chose, not by the field's CLR type alone.
-> A `bool` becomes a `Bool` knob only under `[TickBoxKnob]`; a `double` becomes a `Number` knob under `[FloatKnob]`.
+> A `bool` becomes a `Bool` knob only under `[TickBoxKnob]`; a `double` becomes a `Number` knob under `[NumberKnob<double>]`.
 > The attribute is the contract; pick it for the control you want, not just the type you have.
 
 ### Read-only vs. read/write
@@ -73,10 +72,10 @@ label/indicator — the model drives it, the MMI can only watch). A knob is writ
 *and* `IsReadOnly` is not set**:
 
 ```csharp
-[IntegerKnob("Charge current (mA)", Min = 0, Max = 5000, KnobType = NumberKnobType.Slider)]
+[NumberKnob<int>("Charge current (mA)", Min = 0, Max = 5000, KnobType = NumberKnobType.Slider)]
 public partial int ChargeCurrent { get; set; }          // read/write — operator can command it
 
-[FloatKnob("Bus voltage", DecimalPlaces = 3, IsReadOnly = true)]
+[NumberKnob<double>("Bus voltage", DecimalPlaces = 3, IsReadOnly = true)]
 public partial double Vbus { get; set; }                // read-only — the model drives it
 ```
 
@@ -96,7 +95,7 @@ For each value knob the `KnobGenerator` emits three things on your partial class
    discovery.
 
 ```csharp
-// generated (sketch) for [IntegerKnob("Speed", Min = 0, Max = 100)] public partial int Speed { get; set; }
+// generated (sketch) for [NumberKnob<int>("Speed", Min = 0, Max = 100)] public partial int Speed { get; set; }
 private int __Speed = default!;
 private Knob? __SpeedKnob;
 
@@ -164,7 +163,7 @@ fired it (operator, or the model calling `Reset()` directly). Triggers carry no 
 public partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     // read/write number, presented as a slider
-    [IntegerKnob("Charge current (mA)", Min = 0, Max = 5000, KnobType = NumberKnobType.Slider)]
+    [NumberKnob<int>("Charge current (mA)", Min = 0, Max = 5000, KnobType = NumberKnobType.Slider)]
     public partial int ChargeCurrent { get; set; }
 
     // read/write toggle
@@ -172,7 +171,7 @@ public partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBase(c, s
     public partial bool Heater { get; set; }
 
     // read-only float that is ALSO a plottable — one field, two surfaces (see below)
-    [FloatKnob("Bus voltage", DecimalPlaces = 3, IsReadOnly = true)]
+    [NumberKnob<double>("Bus voltage", DecimalPlaces = 3, IsReadOnly = true)]
     [Plottable("Bus voltage", Unit = "V")]
     public partial double Vbus { get; set; }
 

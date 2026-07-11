@@ -131,11 +131,11 @@ public sealed partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBa
     [Parameter(100.0)] public double CapacityAh { get; set; }
 
     // Operator-settable input: the load, as a slider 0–50 A.
-    [FloatKnob("Load", Min = 0, Max = 50, DecimalPlaces = 1)]
+    [NumberKnob<double>("Load", Min = 0, Max = 50, DecimalPlaces = 1)]
     public partial double Load { get; set; }
 
     // Model-driven readout AND a graphed series — one backing field, both roles.
-    [FloatKnob("State of charge", Min = 0, Max = 1, DecimalPlaces = 3, IsReadOnly = true)]
+    [NumberKnob<double>("State of charge", Min = 0, Max = 1, DecimalPlaces = 3, IsReadOnly = true)]
     [Plottable("SoC")]
     public partial double SoC { get; set; }
 
@@ -170,10 +170,10 @@ public sealed partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBa
 
     [Parameter(100.0)] public double CapacityAh { get; set; }
 
-    [FloatKnob("Load", Min = 0, Max = 50, DecimalPlaces = 1)]
+    [NumberKnob<double>("Load", Min = 0, Max = 50, DecimalPlaces = 1)]
     public partial double Load { get; set; }
 
-    [FloatKnob("State of charge", Min = 0, Max = 1, DecimalPlaces = 3, IsReadOnly = true)]
+    [NumberKnob<double>("State of charge", Min = 0, Max = 1, DecimalPlaces = 3, IsReadOnly = true)]
     [Plottable("SoC")]
     public partial double SoC { get; set; }
 

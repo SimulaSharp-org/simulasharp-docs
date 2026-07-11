@@ -21,8 +21,7 @@
             For every partial model with knob-decorated partial properties, implements them
             (volatile get; volatile set + change-notify) and builds a <c>Knob</c> binder
             per knob via an explicit <c>IKnobProvider.CollectKnobs</c> the simulator calls during
-            discovery. v1 covers value knobs (Text/TickBox/Integer/Float); trigger knobs are
-            deferred.
+            discovery. v1 covers value knobs (Text/TickBox/Number&lt;T&gt;) plus trigger knobs.
             </summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.KnobGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">

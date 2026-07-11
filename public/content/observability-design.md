@@ -41,10 +41,10 @@ flowchart TD
 
 | I want to… | Use | Notes |
 |---|---|---|
-| Show a number the model computes | read-only `[IntegerKnob]`/`[FloatKnob]` | `IsReadOnly = true` (or no setter) |
+| Show a number the model computes | read-only `[NumberKnob<T>]` | `IsReadOnly = true` (or no setter) |
 | Show an on/off state | read-only `[TickBoxKnob]` | renders as an indicator lamp |
 | Show a status string | read-only `[TextKnob]` | renders as a label |
-| Let the operator set a number | read/write `[IntegerKnob]`/`[FloatKnob]` | give `Min`/`Max`; pick `Input`/`Slider`/`Rotary` |
+| Let the operator set a number | read/write `[NumberKnob<T>]` | give `Min`/`Max`; pick `Input`/`Slider`/`Rotary` |
 | Let the operator toggle something | read/write `[TickBoxKnob]` | a switch |
 | Let the operator type a value | read/write `[TextKnob]` | `MaxLength`, `AllowEmpty`, `AllowNewLine` |
 | Give the operator a button | `[TriggerKnob]` on `Handle_<Name>()` | runs on the model's site thread |
@@ -96,8 +96,8 @@ the human **label** (the attribute's first argument); the path prefix comes from
 
 - **Name instances well in the assembly** — the path an operator sees is `Site → Model names → member`. Meaningful
   `Name:` values pay off here.
-- **Give every knob/plottable a clear `Label`** — it's what the widget shows. `[FloatKnob("Bus voltage")]`, not
-  `[FloatKnob("Vbus")]`, unless the audience speaks the jargon.
+- **Give every knob/plottable a clear `Label`** — it's what the widget shows. `[NumberKnob<double>("Bus voltage")]`, not
+  `[NumberKnob<double>("Vbus")]`, unless the audience speaks the jargon.
 - **Set units on plottables** — `[Plottable("Bus voltage", Unit = "V")]` so the chart axis is labelled.
 - **Give numeric knobs `Min`/`Max`** — they bound sliders and validate inputs.
 

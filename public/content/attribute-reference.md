@@ -21,8 +21,7 @@ of `Bool` / `Number` / `Text` / `Trigger`.
 |---|---|---|---|
 | [`TextKnobAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.TextKnobAttribute) | `partial` property (string) | `MaxLength` (int, def `int.MaxValue`), `AllowEmpty` (def `true`), `AllowNewLine` (def `false`) | A text field (RW) or label (RO). `AllowNewLine` renders a text area. Kind `Text`. |
 | [`TickBoxKnobAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.TickBoxKnobAttribute) | `partial` property (bool) | *(label only)* | A checkbox (RW) or light indicator (RO). Kind `Bool`. |
-| [`IntegerKnobAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.IntegerKnobAttribute) | `partial` property (integer) | `Min`/`Max` (long), `KnobType` (`NumberKnobType`, def `Input`) | An integer input/slider/rotary bounded by `Min`/`Max`. Kind `Number`. |
-| [`FloatKnobAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.FloatKnobAttribute) | `partial` property (float) | `Min`/`Max` (float), `DecimalPlaces` (uint, def `2`), `KnobType` (def `Input`) | A floating-point input/slider/rotary. Kind `Number`. |
+| [`NumberKnobAttribute<T>`](#/api/type/SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1) | `partial` property (numeric `T`) | `Min`/`Max` (`T`), `DecimalPlaces` (uint, def `2`; no-op for integer `T`), `KnobType` (`NumberKnobType`, def `Input`) | A numeric input/slider/rotary bounded by `Min`/`Max`, for any numeric `T` (integer or floating-point). Kind `Number`. |
 | [`TriggerKnobAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.TriggerKnobAttribute) | **method** `Handle_X` | *(label only)* | A button that invokes the method (RW) or a light that flashes when it fires (RO). Kind `Trigger`. |
 
 [`NumberKnobType`](#/api/type/SimulaSharp.Kernel.Attributes.NumberKnobType) = `Input` (plain field) · `Slider`
@@ -31,7 +30,7 @@ of `Bool` / `Number` / `Text` / `Trigger`.
 ```csharp
 public partial class Pump : ModelBase
 {
-    [FloatKnob("Setpoint", Min = 0f, Max = 100f, KnobType = NumberKnobType.Slider, DecimalPlaces = 1)]
+    [NumberKnob<float>("Setpoint", Min = 0f, Max = 100f, KnobType = NumberKnobType.Slider, DecimalPlaces = 1)]
     public partial float Setpoint { get; set; }
 
     [TickBoxKnob("Enabled")]
@@ -59,7 +58,7 @@ Supported member types: **any numeric** (`int`/`long`/`float`/`double`/…), **`
 **enums** (→ underlying numeric). Anything else is a build error — **SIM020**.
 
 ```csharp
-[FloatKnob("Voltage", IsReadOnly = true)]  // coexists with the plottable on one field
+[NumberKnob<float>("Voltage", IsReadOnly = true)]  // coexists with the plottable on one field
 [Plottable("Bus voltage", Unit = "V")]
 public partial float Voltage { get; set; }
 ```
