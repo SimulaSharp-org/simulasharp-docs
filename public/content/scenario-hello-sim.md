@@ -82,16 +82,13 @@ suffix is just a convention).
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="SimulaSharp.Kernel" Version="1.0.0" />
-    <PackageReference Include="SimulaSharp.CodeGen" Version="1.0.0"
-                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <PackageReference Include="SimulaSharp" Version="0.2.0" />
   </ItemGroup>
 </Project>
 ```
 
-> If you reference the framework as **projects** rather than packages, also
-> `<Import Project="$(SimulaSharp_Root)\CodeGen\build\SimulaSharp.CodeGen.targets" />` after the `<SimAssembly>`
-> items — package consumers get that import for free. See [Project setup](#/guide/project-setup).
+> The one `SimulaSharp` meta-package brings the Kernel runtime and the CodeGen analyzer (with its `<SimAssembly>`
+> support) automatically. You need a NuGet source that has the packages — see [Project setup](#/guide/project-setup).
 
 ## Running it
 
