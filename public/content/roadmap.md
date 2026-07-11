@@ -6,7 +6,7 @@ Where SimulaSharp is today, and what is deferred by design. Kept honest and shor
 
 | Piece | Status |
 |---|---|
-| **Kernel** (`SimulaSharp.Kernel`) | The runtime: the hard-real-time [`SimClock`](#/api/type/SimulaSharp.Kernel.Services.SimClock), parallel single-threaded [`SimSite`](#/guide/simsites-and-actors)s, per-site [event queues](#/guide/event-queue-and-scheduling), [coroutines](#/guide/coroutines), [associations](#/guide/associations) (`Container<T>` / `Reference<T>`), [knobs & plottables](#/guide/observability), config binding, and [structured logging](#/guide/observability-design). |
+| **Kernel** (`SimulaSharp.Kernel`) | The runtime: the hard-real-time [`SimClock`](#/api/type/SimulaSharp.Kernel.Services.SimClock), parallel single-threaded [`SimSite`](#/guide/simsites-and-actors)s, per-site [event queues](#/guide/event-queue-and-scheduling), [coroutines](#/guide/coroutines), [associations](#/guide/associations) (`Container<T>` / `[References<T>]`), [knobs & plottables](#/guide/observability), config binding, and [structured logging](#/guide/observability-design). |
 | **CodeGen** (`SimulaSharp.CodeGen`) | Roslyn source generators: the `<Name>Simulator`, `<Type>Ref` accessors, knob/plottable/config binders, and service interaction surfaces — with strict build-time validation (`SIM001`–`SIM020`). |
 | **Hosting** (`SimulaSharp.Hosting`) | Loads a packed simulator (`.nupkg`) into a collectible `AssemblyLoadContext`, discovers the simulators, and can unload/reload without restarting. |
 | **Test suites** | `Kernel.Tests`, `CodeGen.Tests`, and `Hosting.Tests` — real-time kernel tests, per-generator Roslyn-harness tests, and pack/load tests. |

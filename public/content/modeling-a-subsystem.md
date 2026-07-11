@@ -206,7 +206,7 @@ public sealed partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBa
 If the step needs data from another model, *how* you fetch it depends on where that model lives:
 
 - **Same subtree** → a direct method call. Nothing special; it's one thread.
-- **Another site** → a [`Reference<T>`](#/guide/associations) accessor returning a `Task`. Don't block on it from the
+- **Another site** → a [`[References<T>]`](#/guide/associations) accessor returning a `Task`. Don't block on it from the
   step — if you need the reply, do the work in a [coroutine](#/guide/coroutines) and `SimYield.Await` the task, or
   subscribe to a [service event](#/guide/services) and keep a local cached copy the step reads. Full menu:
   [interaction patterns](#/guide/interaction-patterns).

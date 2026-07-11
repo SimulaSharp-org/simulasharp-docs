@@ -67,12 +67,12 @@ Two things structure everything else you write:
 - **Containment** — a parent owns sub-models via [`[Contains<T>]`](#/api/type/SimulaSharp.Kernel.Attributes.ContainsAttribute`1),
   exposed as a read-only `Container<T>`. A root model and its **whole subtree share one SimSite** (one thread), so
   intra-subtree calls are direct and lock-free. See [models & containment](#/guide/models-and-containment).
-- **References** — a non-owning link to a model you may not own, declared as a
-  [`Reference<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Reference`1). You call it through a generated `<Type>Ref`
-  accessor that auto-dispatches — synchronous if same-site, marshalled if cross-site. See
+- **References** — a non-owning link to a model you may not own, declared with
+  [`[References<T>]`](#/api/type/SimulaSharp.Kernel.Attributes.ReferencesAttribute`1). You call it through a generated
+  `<Type>Ref` accessor that auto-dispatches — synchronous if same-site, marshalled if cross-site. See
   [associations](#/guide/associations).
 
-> **Consequence for design.** A model that touches any generated member — a knob, a `[Parameter]`, a `Reference<T>` — must
+> **Consequence for design.** A model that touches any generated member — a knob, a `[Parameter]`, a `[References<T>]` — must
 > be declared **`partial`**, so the generator can weave in its half. A model with none can be `sealed`. When in doubt,
 > mark it `partial`; it costs nothing.
 
@@ -155,7 +155,7 @@ Simulator:
                   Type: Demo.Unit
                   Config: { Rate: 1.5 }
                   Refs:
-                    - Peers: [ Plant.Plant1.UnitB ]   # fills Reference<Unit> Peers
+                    - Peers: [ Plant.Plant1.UnitB ]   # fills the [References<Unit>] reference Peers
                 - Name: UnitB
                   Type: Demo.Unit
                   Config: { Rate: 2.5 }

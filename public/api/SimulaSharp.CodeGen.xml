@@ -80,32 +80,47 @@
         <member name="M:SimulaSharp.CodeGen.PlottableGenerator.SampleExpr(Microsoft.CodeAnalysis.IPropertySymbol)">
             <summary>Projects a supported member type to a <c>double</c> read expression, or null if unsupported.</summary>
         </member>
-        <member name="T:SimulaSharp.CodeGen.ReferenceAccessorGenerator">
+        <member name="T:SimulaSharp.CodeGen.ReferenceGenerator">
             <summary>
-            For every partial model with <c>Reference&lt;T&gt;</c> members, emits the access side
-            of the reference split: a <c>protected ReferenceAccessor&lt;TRef&gt; _&lt;Name&gt;</c>
-            per reference (the guarded handle the model calls through) and an explicit
-            <c>IReferenceWiring.WireReferences()</c> that builds each accessor from its
-            <c>Reference</c> collection (via <c>ReferenceAccessor.From</c>). The simulator calls
-            <c>WireReferences</c> once the reference collections are populated.
+            For every model decorated with <c>[References&lt;T&gt;("Name")]</c>, emits the read-only reference accessor and the
+            hidden fill seam. Per attribute it emits a <c>readonly IReference&lt;{T}Ref&gt; __ref_Name</c> backed by a
+            <c>FillableReference&lt;{T}Ref&gt;</c> and a <c>public IReference&lt;{T}Ref&gt; Name =&gt; __ref_Name;</c> accessor
+            (getters only — no <c>Add</c> on the model's surface). It also implements <c>IReferenceWiring.WireReference</c>
+            explicitly: the generated simulator calls it with a <c>RefCollection</c> of pre-wrapped target Refs, which the seam
+            downcasts to the reference's Ref type (valid because a referenced model's Ref implements the companion interface —
+            see <see cref="T:SimulaSharp.CodeGen.RefGenerator"/>) and appends to the fillable backing.
             </summary>
         </member>
-        <member name="M:SimulaSharp.CodeGen.ReferenceAccessorGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
+        <member name="M:SimulaSharp.CodeGen.ReferenceGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
             <inheritdoc/>
         </member>
         <member name="T:SimulaSharp.CodeGen.RefGenerator">
             <summary>
-            Emits a <c>&lt;Model&gt;Ref</c> class for every type that implements
-            <c>SimulaSharp.Kernel.Model.IModel</c>. The Ref wraps a model instance and
-            exposes one async accessor per public member (methods verbatim; properties and
-            fields as <c>Get&lt;Name&gt;</c>/<c>Set&lt;Name&gt;</c>). Every accessor takes the
-            caller's scheduler as its first argument: if it matches the target's scheduler
-            the call runs directly (same site) and completes synchronously; otherwise it is
-            marshalled onto the target's site via the inbox and awaited.
+            Emits the guarded reference accessors. For <b>every</b> concrete model that implements
+            <c>SimulaSharp.Kernel.Model.IModel</c> it emits a <c>&lt;Model&gt;Ref</c> class wrapping an instance and exposing
+            one async accessor per public member (methods verbatim; properties/fields as <c>Get&lt;Name&gt;</c>/
+            <c>Set&lt;Name&gt;</c>). Every accessor takes the caller's scheduler: same-site as the target it runs directly and
+            completes synchronously, otherwise it is marshalled onto the target's site via <c>InjectAsync</c> and awaited.
+            Class Refs are eager (they exist for scripting/live invocation, not just for wired references).
+            <para>
+            When an <b>interface</b> is used as a <c>[References&lt;I&gt;]</c> target, it additionally emits a companion
+            <c>&lt;I&gt;Ref</c> <b>interface</b> declaring the same accessor signatures, and makes every model Ref whose model
+            implements <c>I</c> implement <c>&lt;I&gt;Ref</c> — so an <c>IReference&lt;I Ref&gt;</c> can hold the concrete Refs
+            of any implementation polymorphically.
+            </para>
             </summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.RefGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
             <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.RefGenerator.InterfaceTargets(Microsoft.CodeAnalysis.GeneratorAttributeSyntaxContext)">
+            <summary>The interface type arguments of the <c>[References&lt;I&gt;]</c> attributes on one class.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.RefGenerator.Model(Microsoft.CodeAnalysis.GeneratorSyntaxContext)">
+            <summary>The concrete, non-generic <c>IModel</c> class declared by this node, or null.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.RefGenerator.EmitSignature(System.Text.StringBuilder,Microsoft.CodeAnalysis.ISymbol,System.Collections.Generic.HashSet{System.String})">
+            <summary>Appends an accessor <em>signature</em> (declaration only) for one interface member.</summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.RefGenerator.EmitValue(System.Text.StringBuilder,System.String,System.String,System.String,System.String)">
             <summary>Emits a value-returning accessor: same-site direct, else marshalled via InjectAsync.</summary>
@@ -174,6 +189,10 @@
         </member>
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.DerivesFrom(Microsoft.CodeAnalysis.INamedTypeSymbol,Microsoft.CodeAnalysis.INamedTypeSymbol)">
             <summary>True if <paramref name="type"/> (or an ancestor) is <paramref name="baseType"/>. False if either is null.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Validator.ReferenceTarget(Microsoft.CodeAnalysis.INamedTypeSymbol,System.String)">
+            <summary>The target type <c>T</c> of the <c>[References&lt;T&gt;("name")]</c> reference declared on
+            <paramref name="type"/> (walking base types), or null when the model declares no such reference.</summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Validator.ContainerElement(Microsoft.CodeAnalysis.INamedTypeSymbol,System.String)">
             <summary>The element type <c>T</c> of the <c>[Contains&lt;T&gt;("name")]</c> container declared on

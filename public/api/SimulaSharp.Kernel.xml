@@ -293,6 +293,43 @@
         <member name="P:SimulaSharp.Kernel.Attributes.PlottableAttribute.Unit">
             <summary>Optional unit for the plot axis (e.g. <c>"V"</c>, <c>"mA"</c>); null if unitless.</summary>
         </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1">
+            <summary>
+            Declares that the decorated model holds a <b>reference</b> — a non-owning link — to a list of models of type
+            <typeparamref name="T"/>, surfaced as a read-only <c>IReference&lt;T&gt;Ref</c> accessor named <see cref="P:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1.Name"/>
+            whose elements are the generated guarded <c>&lt;T&gt;Ref</c> accessors. A reference may cross site boundaries, so
+            calls go through those Refs (same-site calls resolve directly; cross-site calls marshal onto the target's site).
+            <para>
+            The source generator emits a <c>public IReference&lt;{T}Ref&gt; {Name} { get; }</c> accessor on the
+            (<c>partial</c>) model, backed by a hidden fillable list the generated simulator populates during assembly from
+            this instance's <c>Refs</c> block in the YAML, keyed by <see cref="P:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1.Name"/> (targets given by full instance path).
+            The accessor is read-only. <typeparamref name="T"/> may be a concrete model class or an interface (there is no
+            <c>IModel</c> constraint); when it is an interface, the generator mints a companion <c>&lt;T&gt;Ref</c> interface
+            that every referenced model's Ref implements, so the reference is polymorphic over all implementations.
+            </para>
+            </summary>
+            <typeparam name="T">The referenced model type (a class or an interface).</typeparam>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1.#ctor(System.String)">
+            <summary>
+            Declares that the decorated model holds a <b>reference</b> — a non-owning link — to a list of models of type
+            <typeparamref name="T"/>, surfaced as a read-only <c>IReference&lt;T&gt;Ref</c> accessor named <see cref="P:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1.Name"/>
+            whose elements are the generated guarded <c>&lt;T&gt;Ref</c> accessors. A reference may cross site boundaries, so
+            calls go through those Refs (same-site calls resolve directly; cross-site calls marshal onto the target's site).
+            <para>
+            The source generator emits a <c>public IReference&lt;{T}Ref&gt; {Name} { get; }</c> accessor on the
+            (<c>partial</c>) model, backed by a hidden fillable list the generated simulator populates during assembly from
+            this instance's <c>Refs</c> block in the YAML, keyed by <see cref="P:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1.Name"/> (targets given by full instance path).
+            The accessor is read-only. <typeparamref name="T"/> may be a concrete model class or an interface (there is no
+            <c>IModel</c> constraint); when it is an interface, the generator mints a companion <c>&lt;T&gt;Ref</c> interface
+            that every referenced model's Ref implements, so the reference is polymorphic over all implementations.
+            </para>
+            </summary>
+            <typeparam name="T">The referenced model type (a class or an interface).</typeparam>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1.Name">
+            <summary>The reference accessor name: the generated property's name and the YAML <c>Refs</c> key.</summary>
+        </member>
         <member name="T:SimulaSharp.Kernel.Attributes.ServiceEventAttribute">
             <summary>
             Declares a named <b>publish point</b> on a service (a pub/sub channel from the
@@ -760,24 +797,25 @@
         </member>
         <member name="T:SimulaSharp.Kernel.Model.IModelRef">
             <summary>
-            Marker implemented by every generated <c>&lt;Model&gt;Ref</c> class. Lets
-            <see cref="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1"/> constrain its element to a Ref, and
-            lets the source generator tell a reference (<c>Reference&lt;IModel&gt;</c>) apart
-            from a reference accessor (<c>ReferenceAccessor&lt;IModelRef&gt;</c>).
+            Marker implemented by every generated <c>&lt;Model&gt;Ref</c> class (and by every companion
+            <c>&lt;Interface&gt;Ref</c> interface generated for an interface reference target). It lets
+            <see cref="T:SimulaSharp.Kernel.Primitives.IReference`1"/> constrain its element to a Ref, and lets the generated wiring pass
+            heterogeneous Refs through a single <see cref="T:SimulaSharp.Kernel.Primitives.RefCollection"/> before downcasting each to its
+            reference's Ref type.
             </summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Model.IReferenceWiring">
             <summary>
-            Implemented (explicitly, by the source generator) by models that declare
-            <see cref="T:SimulaSharp.Kernel.Primitives.Reference`1"/> members. The generated simulator calls
-            <see cref="M:SimulaSharp.Kernel.Model.IReferenceWiring.WireReferences"/> after it has populated every model's reference
-            collections, so each model can build its <see cref="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1"/>
-            backings over the now-complete set of targets. It is implemented explicitly, so it
-            does not appear on the model's public surface.
+            Implemented (explicitly, by the source generator) by models that declare <c>[References&lt;T&gt;]</c> members.
+            After the generated simulator has constructed every instance, it calls <see cref="M:SimulaSharp.Kernel.Model.IReferenceWiring.WireReference(System.String,SimulaSharp.Kernel.Primitives.RefCollection)"/> once per
+            reference with a <see cref="T:SimulaSharp.Kernel.Primitives.RefCollection"/> of the pre-wrapped target Refs (the simulator builds each Ref because
+            only it knows the target's concrete type). The model downcasts each Ref to its reference's element type and fills
+            the hidden <see cref="T:SimulaSharp.Kernel.Primitives.FillableReference`1"/> backing. Implemented explicitly, so it stays off the model's public
+            surface.
             </summary>
         </member>
-        <member name="M:SimulaSharp.Kernel.Model.IReferenceWiring.WireReferences">
-            <summary>Builds this model's reference accessors from its populated reference collections.</summary>
+        <member name="M:SimulaSharp.Kernel.Model.IReferenceWiring.WireReference(System.String,SimulaSharp.Kernel.Primitives.RefCollection)">
+            <summary>Fills the reference named <paramref name="member"/> from the pre-wrapped <paramref name="refs"/>.</summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Model.IService">
             <summary>
@@ -1117,52 +1155,44 @@
             </summary>
             <typeparam name="T">The container element type (a class or an interface the children implement).</typeparam>
         </member>
-        <member name="T:SimulaSharp.Kernel.Primitives.Reference`1">
+        <member name="T:SimulaSharp.Kernel.Primitives.FillableReference`1">
             <summary>
-            The public face of a <b>non-owning</b>, list-based association between models —
-            what the developer declares (e.g. <c>public Reference&lt;Tracker&gt; Trackers</c>).
-            It offers only <see cref="M:SimulaSharp.Kernel.Primitives.Reference`1.Add(`0)"/>, used by the generated simulator while wiring the
-            assembly; the developer never reads models out of it directly. Access goes through
-            the codegen-produced <see cref="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1"/> instead, which yields the
-            guarded <c>&lt;Model&gt;Ref</c> wrappers. The type itself is the "reference"
-            decoration (no attribute needed).
+            The fillable implementation of <see cref="T:SimulaSharp.Kernel.Primitives.IReference`1"/>: a plain list of guarded Refs that the generated wiring
+            seam (<c>IReferenceWiring.WireReference</c>) populates once, during assembly. A model holds it typed as the
+            read-only <see cref="T:SimulaSharp.Kernel.Primitives.IReference`1"/>, so <see cref="M:SimulaSharp.Kernel.Primitives.FillableReference`1.Add(`0)"/> is reachable only by downcasting to this concrete
+            type — which only the generated seam does. After wiring it is never touched again, so it behaves as a frozen list.
             </summary>
-            <typeparam name="T">The referenced model type.</typeparam>
+            <typeparam name="T">The generated Ref type, or a companion <c>&lt;Type&gt;Ref</c> interface for an interface target.</typeparam>
         </member>
-        <member name="M:SimulaSharp.Kernel.Primitives.Reference`1.Add(`0)">
-            <summary>Adds a referenced model. Called by the generated simulator during assembly wiring.</summary>
+        <member name="M:SimulaSharp.Kernel.Primitives.FillableReference`1.Add(`0)">
+            <summary>Appends a guarded Ref. Called only by the generated wiring seam during assembly.</summary>
         </member>
-        <member name="P:SimulaSharp.Kernel.Primitives.Reference`1.Items">
-            <summary>Framework access to the referenced models (used to build the <see cref="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1"/>).</summary>
-        </member>
-        <member name="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1">
-            <summary>
-            The codegen-produced backing for a <see cref="T:SimulaSharp.Kernel.Primitives.Reference`1"/> — e.g. a
-            <c>protected ReferenceAccessor&lt;TrackerRef&gt; _Trackers</c> generated for a
-            developer's <c>Reference&lt;Tracker&gt; Trackers</c>. It offers only
-            access/enumeration over the guarded <c>&lt;Model&gt;Ref</c> wrappers; the model's
-            own code calls referenced models through these Refs (passing its own scheduler).
-            Built via <see cref="M:SimulaSharp.Kernel.Primitives.ReferenceAccessor.From``2(SimulaSharp.Kernel.Primitives.Reference{``0},System.Func{``0,``1})"/>.
-            </summary>
-            <typeparam name="T">The generated Ref type.</typeparam>
-        </member>
-        <member name="P:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1.Item(System.Int32)">
+        <member name="P:SimulaSharp.Kernel.Primitives.FillableReference`1.Item(System.Int32)">
             <summary>The Ref at <paramref name="index"/>.</summary>
         </member>
-        <member name="P:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1.Count">
-            <summary>The number of referenced models.</summary>
+        <member name="P:SimulaSharp.Kernel.Primitives.FillableReference`1.Count">
+            <summary>The number of referenced Refs.</summary>
         </member>
-        <member name="M:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1.GetEnumerator">
+        <member name="M:SimulaSharp.Kernel.Primitives.FillableReference`1.GetEnumerator">
             <inheritdoc/>
         </member>
-        <member name="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor">
-            <summary>Factory that links a <see cref="T:SimulaSharp.Kernel.Primitives.Reference`1"/> to its <see cref="T:SimulaSharp.Kernel.Primitives.ReferenceAccessor`1"/>.</summary>
-        </member>
-        <member name="M:SimulaSharp.Kernel.Primitives.ReferenceAccessor.From``2(SimulaSharp.Kernel.Primitives.Reference{``0},System.Func{``0,``1})">
+        <member name="T:SimulaSharp.Kernel.Primitives.IReference`1">
             <summary>
-            Wraps each model held by <paramref name="reference"/> in its Ref (via
-            <paramref name="wrap"/>, a generated <c>m =&gt; new FooRef(m)</c>) and returns the
-            access-only accessor. Called by the generated wiring after assembly completes.
+            The read-only face of a <b>reference</b> association: the list of guarded <c>&lt;Type&gt;Ref</c> accessors a model
+            links to. This is the type a model's generated reference accessor is declared as, so a model can index and
+            enumerate the Refs (and call through them) but never mutate the set — the fillable side
+            (<see cref="T:SimulaSharp.Kernel.Primitives.FillableReference`1"/>) is a separate type the model never sees. Covariant in
+            <typeparamref name="T"/> because it is purely a read surface.
+            </summary>
+            <typeparam name="T">The generated Ref type, or a companion <c>&lt;Type&gt;Ref</c> interface for an interface target.</typeparam>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Primitives.RefCollection">
+            <summary>
+            The build-time accumulator the generated simulator fills with pre-wrapped <see cref="T:SimulaSharp.Kernel.Model.IModelRef"/> instances — one
+            guarded Ref per referenced target, constructed by the simulator because only it knows each target's concrete type
+            — and passes to a model's <c>IReferenceWiring.WireReference</c> seam, which downcasts each to that reference's Ref
+            type and stores it. Deliberately non-generic: it carries heterogeneous concrete Refs unified by
+            <see cref="T:SimulaSharp.Kernel.Model.IModelRef"/>, exactly as <see cref="T:SimulaSharp.Kernel.Primitives.ContainerFactory"/> carries children unified by <c>IModel</c>.
             </summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Primitives.SimYield">

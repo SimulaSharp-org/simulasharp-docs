@@ -25,7 +25,7 @@ The vocabulary of SimulaSharp, alphabetical. Each entry links to the chapter tha
 | **pack (`.nupkg`)** | A finished simulator packaged via `dotnet pack`, made self-contained (private deps + `deps.json`) for a host to load. See [packing & hosting](#/guide/packing-and-hosting). |
 | **plottable** | The unit of plot telemetry: a named numeric sample the host sweeps at one mission-time stamp per sweep. Marked `[Plottable]`. See [observability](#/guide/observability). |
 | **reference** | A non-owning link from one model to another (possibly on another site). See [associations](#/guide/associations). |
-| **`Reference<T>`** | The dedicated type expressing a **non-owning link** to instances of type `T`; populated from the YAML `Refs` block. See [associations](#/guide/associations). |
+| **`[References<T>]`** | The decorator expressing a **non-owning link** to models of type `T`; the generator emits a read-only `IReference<T>Ref` accessor of guarded Refs, filled from the YAML `Refs` block. See [associations](#/guide/associations). |
 | **service** | A shared capability with its own thread, exposing generated pub/sub events and request entry points; not part of the model tree. See [services](#/guide/services). |
 | **sim time** | Elapsed simulation time in microseconds — the horizon, read as `SimNowUs`; starts at 0. See [time & the clock](#/guide/time-and-clock). |
 | **SimClock** | The single hard-real-time clock: one writer thread advancing the horizon at 1:1 with wall time; `Start`/`Pause`, no reset. See [time & the clock](#/guide/time-and-clock). |

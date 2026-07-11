@@ -7,7 +7,7 @@ coupling, cost, and how you write the call.
 | # | Pattern | Coupling | Thread | Cost | Result | Reach for it when… |
 |---|---|---|---|---|---|---|
 | 1 | **Intra-subtree direct call** | tight (owned/same subtree) | caller's own | a method call | immediate return | the callee is in your [containment subtree](#/guide/models-and-containment) |
-| 2 | **Cross-site `Reference<T>`** | point-to-point link | target's | a marshal | a `Task` | a specific peer on another site |
+| 2 | **Cross-site `[References<T>]`** | point-to-point link | target's | a marshal | a `Task` | a specific peer on another site |
 | 3 | **Service** ([`[ServiceEvent]`](#/guide/services)/[`[ServiceRequest]`](#/guide/services)) | many-to-one, decoupled | service's | a marshal | fire-and-forget or `Task` | a shared capability many models use |
 
 ## Choosing among the three
@@ -67,25 +67,23 @@ Use it whenever you can. If your hottest call path *isn't* a direct call, recons
 
 ---
 
-## 2. Cross-site `Reference<T>`
+## 2. Cross-site `[References<T>]`
 
-A point-to-point link to a specific model that may live on another site. You declare a
-[`Reference<T>`](#/guide/associations); the generator gives you a `_<Member>` accessor
-([`ReferenceAccessor<TRef>`](#/api/type/SimulaSharp.Kernel.Primitives.ReferenceAccessor`1)) whose per-member methods take
-**your `Scheduler`** as the first argument and return a `Task`. The accessor auto-dispatches: same-site → runs directly
-and the `Task` is already complete; cross-site → marshalled via `InjectAsync` onto the target's thread.
+A point-to-point link to a specific model that may live on another site. You declare it with
+[`[References<T>("Name")]`](#/guide/associations); the generator gives you a read-only `IReference<T>Ref` accessor of
+that name whose per-member methods take **your `Scheduler`** as the first argument and return a `Task`. The accessor
+auto-dispatches: same-site → runs directly and the `Task` is already complete; cross-site → marshalled via
+`InjectAsync` onto the target's thread.
 
 ```csharp
+[References<Sensor>("Sensors")]
 public sealed partial class Controller(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    public Reference<Sensor> Sensors { get; } = new();
-    // generator adds: protected ReferenceAccessor<SensorRef> _Sensors;
-
     private IEnumerator<SimYield> Loop()
     {
         while (true)
         {
-            Task<double> reading = _Sensors[0].ReadPressure(Scheduler);   // pass YOUR scheduler
+            Task<double> reading = Sensors[0].ReadPressure(Scheduler);    // pass YOUR scheduler
             yield return SimYield.Await(reading);                         // park the coroutine
             double p = reading.GetAwaiter().GetResult();                  // complete by now
             Actuate(p);
@@ -223,7 +221,7 @@ Both keep the thread free; both make the reaction run on *your* site so it can t
 | You want to… | Use |
 |---|---|
 | Call a model in your own subtree | direct method call — synchronous, lock-free |
-| Call a specific peer on another site | a [`Reference<T>`](#/guide/associations) accessor: `_B[i].M(Scheduler, …)` |
+| Call a specific peer on another site | a [`[References<T>]`](#/guide/associations) accessor: `_B[i].M(Scheduler, …)` |
 | Broadcast "something changed" to many models | a [`[ServiceEvent]`](#/guide/services) + local cache |
 | Ask a shared capability for an answer | a [`[ServiceRequest]`](#/guide/services): `await svc.X(arg)` |
 | Read a cross-thread reply from a process | `yield return SimYield.Await(task)` in a [coroutine](#/guide/coroutines) |

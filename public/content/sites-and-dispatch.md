@@ -84,7 +84,7 @@ compile.
 ## Marshalling is the common denominator
 
 Every cross-thread hand-off in SimulaSharp — a `[ServiceRequest]` marshalled onto a service, a `[ServiceEvent]` delivered
-to a subscriber, a `Reference<T>` accessor dispatching cross-site — bottoms out at **`IDispatcher`**. Because both
+to a subscriber, a `[References<T>]` accessor dispatching cross-site — bottoms out at **`IDispatcher`**. Because both
 `SimSite` and `LooselyCoupledSite` are `IDispatcher`s, the exact same generated plumbing drives both a sim-paced service
 and a [loosely-coupled one](#/guide/services): the caller marshals through `Site`, and where and when that work runs is
 the site's business.

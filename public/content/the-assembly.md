@@ -71,7 +71,7 @@ Simulator:
         - Name: Plant1
           Type: Demo.Plant          # fully-qualified; ctor (IClock, IScheduler, ILogger)
           Config: { Capacity: 5 }   # scalars → [Parameter] members (see Configuration)
-          Models:                   # containment: { <containerFieldName>: [ children ] }
+          Models:                   # containment: { <containerName>: [ children ] }
             - Units:
                 - Name: UnitA
                   Type: Demo.Unit
@@ -117,7 +117,7 @@ A model node is the workhorse. Its fields:
 | `Type` | scalar | Fully-qualified type; must implement `IModel` with the `(IClock, IScheduler, ILogger)` ctor. |
 | `Config` | map | Scalars bound to `[Parameter]` members ([Configuration](#/guide/configuration)). |
 | `Models` | list of `{ containerName: [children] }` | **Containment** — nests children into a `[Contains<T>]` container. |
-| `Refs` | list of `{ referenceField: [dotted.paths] }` | **References** — non-owning links into a `Reference<T>` field, by full instance path. |
+| `Refs` | list of `{ referenceName: [dotted.paths] }` | **References** — non-owning links into a `[References<T>]` reference, by full instance path. |
 | `Deps` | list of `{ serviceRefMember: serviceName }` | **Service bindings** — assigns a named service to a `[ServiceRef]` member. |
 
 The **full dotted path** of an instance is its ancestry joined by dots, rooted at the simulator name:
@@ -142,26 +142,33 @@ public sealed class PlantSimulator : SimulatorBase
     public PlantSimulator() : base(new DateTime(639028224000000000L, DateTimeKind.Utc))  // MissionStart
     {
         var __c0 = RegisterService(new Demo.DemoService(Clock, CreateLogger("Plant.Tracker")));
+        CollectParametersFrom(__c0, "Plant.Tracker");
         var __c1 = CreateSite("Main", 1024);
-        var __c2 = Register(new Demo.Plant(Clock, __c1, CreateLogger("Plant.Plant1")));
-        __c2.__ApplyParameters(new Dictionary<string, string?> { ["Capacity"] = "5" });
-        CollectKnobsFrom(__c2, "Plant.Plant1");
-        CollectPlottablesFrom(__c2, "Plant.Plant1");
+        // Containment is built bottom-up: the children go into a ContainerFactory before the parent exists.
+        var __c2 = new SimulaSharp.Kernel.Primitives.ContainerFactory();
         var __c3 = Register(new Demo.Unit(Clock, __c1, CreateLogger("Plant.Plant1.UnitA")));
         __c3.__ApplyParameters(new Dictionary<string, string?> { ["Rate"] = "1.5" });
         CollectKnobsFrom(__c3, "Plant.Plant1.UnitA");
         CollectPlottablesFrom(__c3, "Plant.Plant1.UnitA");
-        __c2.Units.Add(__c3);                       // containment: parent.<field>.Add(child)
+        CollectParametersFrom(__c3, "Plant.Plant1.UnitA");
+        __c2.Add(__c3);
         var __c4 = Register(new Demo.Unit(Clock, __c1, CreateLogger("Plant.Plant1.UnitB")));
         __c4.__ApplyParameters(new Dictionary<string, string?> { ["Rate"] = "2.5" });
         CollectKnobsFrom(__c4, "Plant.Plant1.UnitB");
         CollectPlottablesFrom(__c4, "Plant.Plant1.UnitB");
-        __c2.Units.Add(__c4);
-        __c2.Tracker = __c0;                        // service dep binding
-        __c3.Peers.Add(__c4);                       // reference population
-        (__c2 as IReferenceWiring)?.WireReferences();   // reference accessors built
-        (__c3 as IReferenceWiring)?.WireReferences();
-        (__c4 as IReferenceWiring)?.WireReferences();
+        CollectParametersFrom(__c4, "Plant.Plant1.UnitB");
+        __c2.Add(__c4);
+        // The parent is constructed with the frozen container handed in through its init accessor.
+        var __c5 = Register(new Demo.Plant(Clock, __c1, CreateLogger("Plant.Plant1")) { Units = __c2.Build<Demo.Unit>() });
+        __c5.__ApplyParameters(new Dictionary<string, string?> { ["Capacity"] = "5" });
+        CollectKnobsFrom(__c5, "Plant.Plant1");
+        CollectPlottablesFrom(__c5, "Plant.Plant1");
+        CollectParametersFrom(__c5, "Plant.Plant1");
+        __c5.Tracker = __c0;                        // service dep binding
+        // Reference wiring: pre-wrap each target as a Ref into a RefCollection, then hand it to the seam.
+        var __c6 = new SimulaSharp.Kernel.Primitives.RefCollection();
+        __c6.Add(new Demo.UnitRef(__c4));
+        ((IReferenceWiring)__c3).WireReference("Peers", __c6);
         OnAssembled();
     }
 }
@@ -169,22 +176,22 @@ public sealed class PlantSimulator : SimulatorBase
 
 Read top to bottom, the generator's passes are:
 
-1. **Services** — `RegisterService(new Svc(Clock, CreateLogger(path)))`, then apply service config.
-2. **Sites + model tree** — `CreateSite(...)`, then depth-first per root: `Register(new Model(Clock, site,
-   CreateLogger(fullPath)))`, `__ApplyParameters`, `CollectKnobsFrom`/`CollectPlottablesFrom`, then recurse into children
-   and `parent.<containerField>.Add(child)`.
+1. **Services** — `RegisterService(new Svc(Clock, CreateLogger(path)))`, then apply service config and collect params.
+2. **Sites + model tree** — `CreateSite(...)`, then **bottom-up** per root: build each container's children into a
+   `ContainerFactory` (`Register(new Model(...))`, `__ApplyParameters`, `CollectKnobsFrom`/`CollectPlottablesFrom`/
+   `CollectParametersFrom`, `factory.Add(child)`), then construct the parent with `{ <container> = factory.Build<T>() }`.
 3. **Service dependency binding** — after everything is constructed, `model.<member> = service`.
-4. **Reference wiring** — populate each `Reference<T>` (`model.<field>.Add(target)`), then
-   `(model as IReferenceWiring)?.WireReferences()` builds the smart accessors.
+4. **Reference wiring** — for each reference, build a `RefCollection` of pre-wrapped `new <Type>Ref(target)`, then
+   `((IReferenceWiring)model).WireReference("<name>", refs)` fills the read-only accessor.
 
 Note the logger issuer for every component is its **full dotted path** (`Plant.Plant1.UnitA`), and the mission epoch is
 baked into the base ctor as a `DateTime` tick count — no parsing at run time.
 
 ```mermaid
 flowchart TB
-  S["1. services<br/>RegisterService + config"] --> ST["2. sites + model tree<br/>CreateSite → Register → config →<br/>collect knobs/plottables → containment"]
+  S["1. services<br/>RegisterService + config"] --> ST["2. sites + model tree<br/>children → ContainerFactory →<br/>parent { container = Build&lt;T&gt;() }"]
   ST --> D["3. bind service deps<br/>model.member = service"]
-  D --> R["4. wire references<br/>Reference.Add → WireReferences()"]
+  D --> R["4. wire references<br/>new &lt;Type&gt;Ref → WireReference()"]
 ```
 
 ---
@@ -208,7 +215,7 @@ error, not a cascade of downstream compile errors against a half-built class.
 | `SIM007` | Container name not found on the model (`[Contains<T>]`) |
 | `SIM008` | Contained type not assignable to the container's element type |
 | `SIM009` | Contained child is not a model (not `IModel`) |
-| `SIM010` | Reference field not found / not a `Reference<T>` |
+| `SIM010` | Reference name not found on the model (`[References<T>]`) |
 | `SIM011` | Reference targets an unknown instance path |
 | `SIM012` | Referenced instance not assignable to the reference's element type |
 | `SIM013` | Dependency member not found / not `[ServiceRef]` |

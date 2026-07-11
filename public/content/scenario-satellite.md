@@ -57,7 +57,7 @@ graph TB
 
 The full bodies are the same integrator/subscriber/reference patterns from the earlier scenarios;
 here are the shapes and what each exposes. Every model that carries a knob, plottable, config,
-`[ServiceRef]`, or `Reference<T>` is **`partial`**.
+`[ServiceRef]`, or `[References<T>]` is **`partial`**.
 
 ```csharp
 namespace Bird;
@@ -112,9 +112,9 @@ public partial class Wheel(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
 }
 
 // ── Comms subtree (site 'Comms') ──────────────────────────────────────────────
+[References<Eps>("Power")]                            // cross-site link → EpsRef
 public partial class Comms(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    public Reference<Eps> Power { get; } = new();        // cross-site link → EpsRef
     [TickBoxKnob("Transmit")] public partial bool Transmit { get; set; }
     // Configure(): a coroutine that Awaits Power[0].ReadStateOfCharge(Scheduler) before keying up.
 }
@@ -131,7 +131,7 @@ public partial class Environment(IClock c, ILogger l) : ServiceBase(c, l, "Envir
 ## The assembly
 
 The full structure, showing every kind of node — services, nested sites, containment (`Models:`
-lists of `{ containerField: [children] }`), a cross-site reference (`Refs:`), and service bindings
+lists of `{ containerName: [children] }`), a cross-site reference (`Refs:`), and service bindings
 (`Deps:`).
 
 ```yaml
@@ -199,7 +199,7 @@ The site boundaries *are* the design. Each choice is a threading and coupling de
   [modeling a subsystem](#/guide/modeling-a-subsystem).
 - **ADCS is a separate root.** Attitude runs a fast control loop on wheels that has *nothing* to do
   with the power balance — independent work, so give it its **own thread** and run it in parallel.
-- **Comms is a third root** and links to EPS with a `Reference<Eps>`, not containment: it merely
+- **Comms is a third root** and links to EPS with a `[References<Eps>]`, not containment: it merely
   *asks* the power state before transmitting. That is an occasional, marshalled cross-site call — the
   right cost for a loose, infrequent coupling. Contrast with the tight EPS-internal calls above.
 - **Environment is a service, not a model.** Sun angle and eclipse are shared by panels *and* ADCS,

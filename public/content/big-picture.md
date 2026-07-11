@@ -51,7 +51,7 @@ flowchart TB
 
 You author **models** (C# classes deriving [`ModelBase`](#/api/type/SimulaSharp.Kernel.Model.ModelBase)) and, when
 you need a shared capability, **services**. You express how models relate with two dedicated types —
-`Container<T>` for **ownership** (containment) and `Reference<T>` for **non-owning links**. You mark the values an
+`Container<T>` for **ownership** (containment) and `[References<T>]` for **non-owning links**. You mark the values an
 operator should see or change with `[Knob]`/`[Plottable]`, and the values the assembly should fill with `[Parameter]`.
 
 Then you write a small **assembly** (`*.simassembly.yaml`) naming the sites, the services, and the model tree. At build

@@ -196,13 +196,15 @@ A pump controller that runs a startup sequence, then loops: read a sensor on ano
 ms. `Ref` accessors are the generated cross-site call surface — see [associations](#/guide/associations).
 
 ```csharp
+[References<Sensor>("Sensors")]
 public sealed partial class PumpController : ModelBase
 {
-    // A Reference<Sensor> gives a generated SensorRef with callerSite-aware dispatch.
+    // [References<Sensor>] gives a generated SensorRef accessor with caller-scheduler-aware dispatch.
     private SensorRef _sensor = default!;
 
     public override void Configure()
     {
+        _sensor = Sensors[0];                      // cache the (single) referenced sensor's Ref
         // Start the process 0 µs from now (materialized on first fire).
         Scheduler.AddCoroutine(Control, delayUs: 0);
     }

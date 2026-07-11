@@ -75,7 +75,7 @@ private IEnumerator<SimYield> Process()
 
 ## 2. `.Result` / `.Wait()` on a cross-site call from a site thread
 
-The specific, common form of pitfall #1. A [`Reference<T>`](#/guide/associations) accessor or a
+The specific, common form of pitfall #1. A [`[References<T>]`](#/guide/associations) accessor or a
 [service request](#/guide/services) returns a `Task` that completes **later, on another thread**. Blocking on it *from a
 site thread* is a trap and often a **deadlock**: the target may need to `Post` a completion back through *your* site's
 inbox — which you're no longer draining, because you're blocked.
@@ -231,11 +231,10 @@ observability](#/guide/observability-design).
 
 ## 9. Arming events in the constructor
 
-**Symptom:** a `NullReferenceException` touching a `Reference<T>` accessor, or a model that reads *default* config
-values, during setup.
+**Symptom:** an **empty** `[References<T>]` accessor, or a model that reads *default* config values, during setup.
 
 **Cause:** the constructor runs **before** the simulator wires references and fills [`[Parameter]`](#/guide/configuration).
-A `Reference<T>`'s generated `_<Member>` accessor and your `[Parameter]` properties aren't populated yet.
+A `[References<T>]`'s generated accessor is still an empty list and your `[Parameter]` properties aren't populated yet.
 
 **Fix:** do all setup in [`Configure()`](#/guide/models-and-containment) — the earliest point the model is whole
 (constructed, wired, configured). Arm events, subscribe to services, and precompute there, never in the constructor.

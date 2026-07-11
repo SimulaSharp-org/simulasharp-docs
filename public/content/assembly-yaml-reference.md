@@ -28,11 +28,11 @@ Simulator:
           Type: Demo.Plant             # fully-qualified type (must implement IModel)
           Config: { Capacity: 5 }      # [Parameter] members, key → scalar
           Models:                      # containment: one entry per [Contains<T>] container
-            - Units:                   # <containerField>: [ child nodes ]
+            - Units:                   # <containerName>: [ child nodes ]
                 - Name: UnitA
                   Type: Demo.Unit
                   Config: { Rate: 1.5 }
-                  Refs:                # one entry per Reference<T> field
+                  Refs:                # one entry per [References<T>] reference
                     - Peers:           # <referenceField>: [ dotted instance paths ]
                         - Plant.Plant1.UnitB
                 - Name: UnitB
@@ -81,7 +81,7 @@ Each node describes one model instance and its subtree.
 | `Type` | **yes** | — | Fully-qualified type; must implement `IModel` and have a `(IClock, IScheduler, ILogger)` ctor. |
 | `Config` | no | *(none)* | Map of `[Parameter]` key → scalar (optional; an omitted key uses the parameter's attribute default, or errors if the parameter is `Required`). |
 | `Models` | no | *(none)* | **Containment.** A list of `{ <containerName>: [ child nodes ] }`; each key names a `[Contains<T>]` container on this type. |
-| `Refs` | no | *(none)* | **References.** A list of `{ <referenceField>: [ dotted.paths ] }`; each key names a `Reference<T>` field, each value a target instance path. |
+| `Refs` | no | *(none)* | **References.** A list of `{ <referenceName>: [ dotted.paths ] }`; each key names a `[References<T>]` reference, each value a target instance path. |
 | `Deps` | no | *(none)* | **Service deps.** A list of `{ <serviceRefMember>: serviceName }` binding a `[ServiceRef]` member to a service instance. |
 
 `Config` values are scalars (numbers, strings, bools) bound into `[Parameter]` members. `Models`/`Refs`/`Deps` are
@@ -104,7 +104,7 @@ so there is no cascade — fix the reported id and rebuild.
 | **SIM007** | Unknown container name. | The `Models` key doesn't name a `[Contains<T>]` container on the type — check the name against the attribute. |
 | **SIM008** | Container element-type mismatch. | A contained child isn't assignable to the container's `T` — fix the child `Type` or the `[Contains<T>]`. |
 | **SIM009** | Contained child is not a model. | A child under `Models` doesn't implement `IModel` — only models can be contained. |
-| **SIM010** | Invalid `Reference<T>` field. | The `Refs` key doesn't name a `Reference<T>` field on the type — check the field name/type. |
+| **SIM010** | Unknown reference name. | The `Refs` key doesn't name a `[References<T>]` reference on the type — check the name against the attribute. |
 | **SIM011** | Unresolved reference path. | The referenced instance path doesn't exist — correct the dotted path. |
 | **SIM012** | Reference type mismatch. | The referenced instance isn't assignable to the reference's `T` — point at a compatible instance. |
 | **SIM013** | Invalid `[ServiceRef]` dependency member. | The `Deps` key doesn't name a `[ServiceRef]` member on the type — check the member and its attribute. |

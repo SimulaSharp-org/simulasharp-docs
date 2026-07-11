@@ -4,18 +4,19 @@ A model rarely stands alone. It **owns** sub-models, and it **links** to other m
 gives you two dedicated types for exactly these two relationships — and keeps them separate on purpose, because they
 have completely different threading consequences.
 
-| | [`Container<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Container`1) | [`Reference<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Reference`1) |
+| | [`Container<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Container`1) | [`IReference<T>Ref`](#/api/type/SimulaSharp.Kernel.Primitives.IReference`1) |
 |---|---|---|
 | Relationship | **owns** (containment) | **links** (non-owning) |
 | Same subtree / thread? | always — the child *is* in your subtree | maybe — the target may be on another site |
 | Call cost | direct, synchronous, lock-free | direct if same-site, else marshalled |
 | How you call | plain method call on the model | through a generated `<T>Ref` accessor, `await`ed |
-| Decoration | the `[Contains<T>("Name")]` attribute on the model | the type itself (no attribute) |
-| Who populates it | the generated simulator (frozen via a factory, handed in through `init`) | the generated simulator (`Add`) |
+| Decoration | the `[Contains<T>("Name")]` attribute on the model | the `[References<T>("Name")]` attribute on the model |
+| Who populates it | the generated simulator (frozen via a factory, handed in through `init`) | the generated simulator (a second wiring pass) |
 
-Containment is declared with a [`[Contains<T>("Name")]`](#/api/type/SimulaSharp.Kernel.Attributes.ContainsAttribute`1)
-decorator on the model — the generator emits a read-only `Container<T>` accessor of that name; a reference is still
-declared by the `Reference<T>` type itself. Neither needs you to write an `Add`: the generated simulator populates
+Both are declared with a decorator — [`[Contains<T>("Name")]`](#/api/type/SimulaSharp.Kernel.Attributes.ContainsAttribute`1)
+or [`[References<T>("Name")]`](#/api/type/SimulaSharp.Kernel.Attributes.ReferencesAttribute`1) — and the generator emits
+a read-only accessor of that name (a `Container<T>` for containment, an `IReference<T>Ref` for a reference). Neither
+needs you to write an `Add`: the generated simulator populates
 both while building the tree.
 
 ## Why two types at all
@@ -53,24 +54,20 @@ graph TB
 
 ## Declaring a reference
 
-You declare a reference over the **model** type, as an auto-property initialized to `new()` — exactly like a container,
-just a different type:
+You declare a reference with a **`[References<T>("Name")]`** decorator on the model — the mirror of `[Contains<T>]`.
+The generator emits a read-only accessor of that name; there is no field to write:
 
 ```csharp
-public sealed class Radar(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
+[References<Tracker>("Trackers")]                       // non-owning link to Trackers
+public partial class Radar(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    public Reference<Tracker> Trackers { get; } = new();    // non-owning link to Trackers
 }
 ```
 
-`Reference<T>` is deliberately a **thin, add-only façade**. Its whole public surface is:
-
-- `Add(target)` — called by the generated simulator during assembly wiring. **You never call it.**
-- `internal IReadOnlyList<T> Items` — framework-only; used to build the accessor.
-
-Notice what is *missing*: there is no indexer, no `Count`, no enumerator on the developer surface. **You cannot read a
-model out of a `Reference<T>` directly** — and that is intentional. A raw model reference would tempt you into an
-unmarshalled cross-thread call. Instead, all access goes through a generated accessor.
+`T` may be a concrete model **or an interface** (there is no `IModel` constraint). The generated `Trackers` accessor is
+an [`IReference<TrackerRef>`](#/api/type/SimulaSharp.Kernel.Primitives.IReference`1) — a read-only list of the guarded
+`<Type>Ref` accessors. You never get a raw model out of a reference: all access goes through a `Ref`, so a cross-thread
+call can never happen unmarshalled.
 
 ## The generated `<Type>Ref` — one accessor per member
 
@@ -147,70 +144,76 @@ marshalled from the schedulers. That is why you always pass your own `Scheduler`
 
 ## Calling through a reference
 
-The [`ReferenceAccessorGenerator`](#/api/type/SimulaSharp.CodeGen.ReferenceAccessorGenerator) emits, for each
-`Reference<T>` member on a **`partial`** model, a `protected ReferenceAccessor<TRef> _<Member>` and wires it up. So your
-`Reference<Tracker> Trackers` gains a generated `_Trackers` of type
-[`ReferenceAccessor<TrackerRef>`](#/api/type/SimulaSharp.Kernel.Primitives.ReferenceAccessor`1). You call peers through
-it, passing your own `Scheduler` and `await`ing:
+The [`ReferenceGenerator`](#/api/type/SimulaSharp.CodeGen.ReferenceGenerator) emits, for each `[References<T>]` on a
+**`partial`** model, a read-only `public IReference<TRef> Name` accessor (backed by a hidden fillable list). So
+`[References<Tracker>("Trackers")]` gives a `Trackers` of type
+[`IReference<TrackerRef>`](#/api/type/SimulaSharp.Kernel.Primitives.IReference`1). You call peers through it, passing
+your own `Scheduler` and `await`ing:
 
 ```csharp
+[References<Tracker>("Trackers")]
 public partial class Radar(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    public Reference<Tracker> Trackers { get; } = new();
-    // generator adds:  protected ReferenceAccessor<TrackerRef> _Trackers;
-
     public async Task Probe()
     {
         // Pass YOUR Scheduler — the accessor decides direct vs marshalled from it.
-        double echo = await _Trackers[0].Interrogate(Scheduler, 42);
+        double echo = await Trackers[0].Interrogate(Scheduler, 42);
         Logger.Trace($"echo={echo}");
     }
 }
 ```
 
-`ReferenceAccessor<TRef>` is itself an `IReadOnlyList<TRef>` — you can index it (`_Trackers[0]`), check `_Trackers.Count`,
-and enumerate the `Ref`s. Here is the same pattern from the real `Unit` model, guarding on `Count`:
+`IReference<TRef>` is an `IReadOnlyList<TRef>` — index it (`Trackers[0]`), check `Trackers.Count`, and enumerate the
+`Ref`s. Here is the same pattern from the real `Unit` model, guarding on `Count`:
 
 ```csharp
+[References<Unit>("Peers")]                              // reference to sibling Units
 public partial class Unit(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     [Parameter(0.0)] public double Rate { get; set; }
-    public Reference<Unit> Peers { get; } = new();          // reference to sibling Units
 
     public async Task<double> PeerRate()
-        => _Peers.Count > 0 ? await _Peers[0].GetRate(Scheduler) : 0;
-    //                                    ^^^^^^^ generated Get accessor for the `Rate` property
+        => Peers.Count > 0 ? await Peers[0].GetRate(Scheduler) : 0;
+    //                                 ^^^^^^^ generated Get accessor for the `Rate` property
 }
 ```
 
 - **Key point.** `Rate` is a property, so its accessor is `GetRate` (and `SetRate`); a method like `Interrogate` keeps
   its name. Everything returns a `Task`/`Task<T>`, so it is always `await`ed.
 
+**Interface targets are polymorphic.** When `T` is an interface, the generator also mints a companion `<T>Ref`
+*interface* declaring the same accessor signatures, and makes every implementing model's Ref implement it. So
+`[References<IPowerSource>("Sources")]` yields an `IReference<IPowerSourceRef>` that can hold the concrete Ref of *any*
+`IPowerSource` model — you call `Sources[i].GetAvailableW(Scheduler)` without caring which implementation it is.
+
 ## How the two sides get wired
 
-The split is deliberate: **`Reference<T>` is the add-only write side**, **`ReferenceAccessor<T>` is the read-only
-access side**, and the generator's explicit
-[`IReferenceWiring.WireReferences()`](#/api/type/SimulaSharp.Kernel.Model.IReferenceWiring) bridges them. The simulator:
+The read side is the model's `IReference<TRef>` accessor; the write side is the hidden `FillableReference<TRef>` it is
+backed by. The generator's explicit
+[`IReferenceWiring.WireReference`](#/api/type/SimulaSharp.Kernel.Model.IReferenceWiring) bridges them. Because a
+reference graph can be **cyclic** (A links B, B links A), wiring is a **second pass**, after every instance exists —
+it cannot be done at construction the way owned containment can. The simulator:
 
-1. constructs all models,
-2. populates each `Reference<T>` by calling its `Add` (from the assembly's link declarations),
-3. calls `WireReferences()`, which builds each `_<Member>` accessor via
-   [`ReferenceAccessor.From(reference, m => new FooRef(m))`](#/api/type/SimulaSharp.Kernel.Primitives.ReferenceAccessor),
+1. constructs all models (each reference starts empty),
+2. for each reference, builds a `RefCollection` of the target `Ref`s — `new <ConcreteType>Ref(target)`, which only the
+   simulator can do because only it knows each target's concrete type,
+3. calls `WireReference("Name", refs)`, whose generated body downcasts each `Ref` to the reference's element type and
+   fills the hidden `FillableReference`,
 4. *then* calls each model's `Configure()`.
 
 ```mermaid
 sequenceDiagram
   participant Sim as Generated simulator
-  participant R as Reference&lt;Tracker&gt; Trackers
-  participant W as WireReferences()
-  participant A as ReferenceAccessor&lt;TrackerRef&gt; _Trackers
-  Sim->>R: Add(tracker0), Add(tracker1)   %% from the assembly
-  Sim->>W: WireReferences()
-  W->>A: ReferenceAccessor.From(Trackers, m => new TrackerRef(m))
+  participant RC as RefCollection
+  participant W as IReferenceWiring.WireReference
+  participant A as IReference&lt;TrackerRef&gt; Trackers
+  Sim->>RC: new TrackerRef(tracker0), new TrackerRef(tracker1)
+  Sim->>W: WireReference("Trackers", refs)
+  W->>A: downcast each Ref, fill the backing FillableReference
   Note over Sim: only now → Configure() on every model
 ```
 
-By the time your `Configure()` runs, `_Trackers` is populated and ready — another reason setup belongs in `Configure`,
+By the time your `Configure()` runs, `Trackers` is populated and ready — another reason setup belongs in `Configure`,
 not the constructor.
 
 ## A reference call, resolved two ways
@@ -246,7 +249,7 @@ sequenceDiagram
 ## Where to go next
 
 - **[Models & containment](#/guide/models-and-containment)** — the owning side, and why a subtree shares one thread.
-- **[The assembly](#/guide/the-assembly)** — how you declare links so the simulator calls `Reference.Add`.
+- **[The assembly](#/guide/the-assembly)** — how you declare links so the simulator wires each reference.
 - **[Services](#/guide/services)** — the *other* cross-thread partner: a shared capability on its own site, always
   marshalled.
 - **[Choosing a topology](#/guide/choosing-a-topology)** — when a link should be a same-site reference vs a cross-site

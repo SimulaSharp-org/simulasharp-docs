@@ -3,8 +3,8 @@
 Two models, **two sites, two threads**: a **Plant** that integrates an inflow, and a **Controller**
 that reads the plant's level and commands its inflow — *across a site boundary*. This is the first
 scenario where a call is **marshalled**, and where you must never block a site thread waiting for a
-reply. The tool is a [`Reference<Plant>`](#/api/type/SimulaSharp.Kernel.Primitives.Reference`1) and
-its generated `PlantRef`.
+reply. The tool is a [`[References<Plant>]`](#/api/type/SimulaSharp.Kernel.Attributes.ReferencesAttribute`1) reference
+and its generated `PlantRef`.
 
 ## Topology
 
@@ -72,9 +72,9 @@ public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
 
 ## The controller
 
-The Controller declares a `Reference<Plant>`; the
-[`ReferenceAccessorGenerator`](#/api/type/SimulaSharp.CodeGen.ReferenceAccessorGenerator) adds a
-`protected ReferenceAccessor<PlantRef> _Plant`. You call the plant **through** `_Plant`, passing your
+The Controller declares `[References<Plant>("Plant")]`; the
+[`ReferenceGenerator`](#/api/type/SimulaSharp.CodeGen.ReferenceGenerator) adds a read-only
+`IReference<PlantRef> Plant`. You call the plant **through** `Plant`, passing your
 **own** `Scheduler` as the caller identity — the accessor decides direct-vs-marshalled from it.
 
 Because the plant is on another site the reply comes back as a `Task`. **Never block the site thread
@@ -93,11 +93,10 @@ using SimulaSharp.Kernel.Services;
 
 namespace Ctrl;
 
+[References<Plant>("Plant")]
 public partial class Controller(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     [Parameter(5.0)] public double Target { get; set; }
-    public Reference<Plant> Plant { get; } = new();
-    // generator adds:  protected ReferenceAccessor<PlantRef> _Plant;
 
     public override void Configure()
         => Scheduler.AddCoroutine(ControlLoop, delayUs: 0);
@@ -107,14 +106,14 @@ public partial class Controller(IClock c, IScheduler s, ILogger l) : ModelBase(c
         while (true)
         {
             // Cross-site read → a Task. Pass MY Scheduler; the accessor marshals it onto PlantSite.
-            Task<double> read = _Plant[0].ReadLevel(Scheduler);
+            Task<double> read = Plant[0].ReadLevel(Scheduler);
             yield return SimYield.Await(read);              // park the coroutine, NOT the thread
             double level = read.GetAwaiter().GetResult();   // complete by now — won't block
 
             double command = Math.Clamp(Target - level, -1.0, 1.0);
 
             // Command is fire-and-forget: no reply to wait for.
-            _ = _Plant[0].SetInflow(Scheduler, command);
+            _ = Plant[0].SetInflow(Scheduler, command);
 
             yield return SimYield.Delay(100_000);           // 10 Hz control
         }
@@ -123,13 +122,13 @@ public partial class Controller(IClock c, IScheduler s, ILogger l) : ModelBase(c
 ```
 
 > **Not using a coroutine?** The other non-blocking option is
-> `_Plant[0].ReadLevel(Scheduler).ContinueWith(t => Scheduler.Post(() => Act(t.Result)))` — the
+> `Plant[0].ReadLevel(Scheduler).ContinueWith(t => Scheduler.Post(() => Act(t.Result)))` — the
 > continuation `Post`s the result back onto *your* site so `Act` runs on your thread. The coroutine
 > form just reads better. Either way, **you never `.Result`/`.Wait()` on a site thread.**
 
 ## The cross-site call
 
-The single `_Plant[0].ReadLevel(Scheduler)` line resolves by comparing schedulers. Here the caller
+The single `Plant[0].ReadLevel(Scheduler)` line resolves by comparing schedulers. Here the caller
 is on CtrlSite and the target on PlantSite, so it marshals:
 
 ```mermaid
@@ -189,9 +188,9 @@ sim.Clock.RunFor(5_000_000);     // ~5 s: the level converges toward Target
 - **Never block a site thread.** A site is a single thread serving every model on it. Blocking on a
   cross-site `Task` deadlocks that whole site. Park a coroutine (`SimYield.Await`) or `ContinueWith`
   + `Post` instead — the site stays live while the reply is in flight.
-- **Ownership vs linkage is a type choice.** The Controller uses `Reference<Plant>` (non-owning),
-  not `Container<Plant>` — the plant is a peer on another site, not a child in the controller's
-  subtree. That single type choice *is* the threading decision.
+- **Ownership vs linkage is a decorator choice.** The Controller uses `[References<Plant>]` (non-owning),
+  not `[Contains<Plant>]` — the plant is a peer on another site, not a child in the controller's
+  subtree. That single choice *is* the threading decision.
 - **This split is a topology decision.** Putting plant and controller on separate sites buys
   parallelism at the cost of a marshal per call. If they chattered every microsecond you'd co-locate
   them; because control is a slow 10 Hz loop, the split is cheap. See

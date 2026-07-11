@@ -178,7 +178,7 @@ Simulator:
 ## What to notice
 
 - **A service is its own actor.** It owns a SimSite, so **every** model↔service call is cross-thread
-  and marshalled — there is no same-site fast path the way there is for a `Reference<T>`. That is the
+  and marshalled — there is no same-site fast path the way there is for a `[References<T>]`. That is the
   price of a capability any number of models can share safely.
 - **Two directions, two mechanisms.** `[ServiceEvent]` is publish/subscribe, **fire-and-forget**
   (no result) — perfect for "something changed", fanned out to many. `[ServiceRequest]` is
