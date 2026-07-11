@@ -63,11 +63,10 @@ here are the shapes and what each exposes. Every model that carries a knob, plot
 namespace Bird;
 
 // ── EPS subtree (site 'EPS') ──────────────────────────────────────────────────
+[Contains<Battery>("Batteries")]                            // owned, same site → direct calls
+[Contains<Panel>("Panels")]
 public partial class Eps(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    public Container<Battery> Batteries { get; } = new();   // owned, same site → direct calls
-    public Container<Panel>   Panels    { get; } = new();
-
     [FloatKnob("Bus voltage", Min = 0, Max = 32, DecimalPlaces = 2, IsReadOnly = true)]
     [Plottable("Vbus", Unit = "V")]
     public partial double Vbus { get; set; }
@@ -97,9 +96,9 @@ public partial class Panel(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
 }
 
 // ── ADCS subtree (site 'ADCS') ────────────────────────────────────────────────
+[Contains<Wheel>("Wheels")]
 public partial class Adcs(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    public Container<Wheel> Wheels { get; } = new();
     [ServiceRef] public Environment Environment { get; set; } = null!;   // reacts to eclipse
     [IntegerKnob("Mode", Min = 0, Max = 3)] public partial int Mode { get; set; }   // read/write
     [Plottable("Rate error", Unit = "deg/s")] public partial double RateError { get; set; }

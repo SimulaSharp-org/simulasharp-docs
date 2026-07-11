@@ -4,6 +4,18 @@
         <name>SimulaSharp.CodeGen</name>
     </assembly>
     <members>
+        <member name="T:SimulaSharp.CodeGen.ContainmentGenerator">
+            <summary>
+            For every model decorated with <c>[Contains&lt;T&gt;("Name")]</c>, emits the read-only containment accessor:
+            a <c>public Container&lt;T&gt; Name { get; init; } = Container&lt;T&gt;.Empty;</c> per attribute. The accessor
+            is <c>init</c>-only, so the generated simulator can fill it through an object initializer during assembly
+            while a model can only enumerate it afterwards. The backing collection is built by the simulator via a
+            <c>ContainerFactory</c> (see <see cref="T:SimulaSharp.CodeGen.SimulatorGenerator"/>); this generator only shapes the surface.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ContainmentGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
+            <inheritdoc/>
+        </member>
         <member name="T:SimulaSharp.CodeGen.KnobGenerator">
             <summary>
             For every partial model with knob-decorated partial properties, implements them
@@ -153,10 +165,19 @@
             </summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.EmitModel(System.Text.StringBuilder,SimulaSharp.CodeGen.SimulatorGenerator.ModelNode,System.String,System.String,SimulaSharp.CodeGen.SimulatorGenerator.EmitCtx)">
-            <summary>Emits construction + config + containment for a model node; returns its var. Records deps.</summary>
+            <summary>
+            Emits construction + config + containment for a model node <b>bottom-up</b>; returns its var. Each
+            container's children are constructed first, collected into a non-generic <c>ContainerFactory</c>, then
+            frozen via <c>Build&lt;T&gt;()</c> and handed to the parent through its <c>init</c>-only accessor — so a
+            child never needs the not-yet-constructed parent. Records service deps and references for later passes.
+            </summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.DerivesFrom(Microsoft.CodeAnalysis.INamedTypeSymbol,Microsoft.CodeAnalysis.INamedTypeSymbol)">
             <summary>True if <paramref name="type"/> (or an ancestor) is <paramref name="baseType"/>. False if either is null.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Validator.ContainerElement(Microsoft.CodeAnalysis.INamedTypeSymbol,System.String)">
+            <summary>The element type <c>T</c> of the <c>[Contains&lt;T&gt;("name")]</c> container declared on
+            <paramref name="type"/> (walking base types), or null when the model declares no such container.</summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Validator.CheckDep(Microsoft.CodeAnalysis.INamedTypeSymbol,System.String,System.String,System.Collections.Generic.Dictionary{System.String,Microsoft.CodeAnalysis.INamedTypeSymbol})">
             <summary>
@@ -164,6 +185,11 @@
             service): the member exists and is <c>[ServiceRef]</c>, the named service is known, and it is
             assignable to the member. Shared by model deps and service→service deps.
             </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.EmitCtx.ContainerElementType(System.String,System.String)">
+            <summary>The fully-qualified element type <c>T</c> of the <c>[Contains&lt;T&gt;("name")]</c> container
+            on <paramref name="parentType"/>, for emitting <c>Build&lt;T&gt;()</c>. Validation has already
+            guaranteed the attribute exists; falls back to <c>IModel</c> defensively.</summary>
         </member>
     </members>
 </doc>

@@ -44,10 +44,9 @@ The cheapest interaction — and the reward for putting tightly-coupled models i
 it's a plain synchronous method call. No marshal, no `Task`, no `await`, no lock.
 
 ```csharp
+[Contains<Unit>("Units")]
 public sealed partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    public Container<Unit> Units { get; } = new();
-
     private void Supervise()
     {
         foreach (Unit u in Units)      // Units share the Plant's site

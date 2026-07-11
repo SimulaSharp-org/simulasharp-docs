@@ -10,11 +10,13 @@ have completely different threading consequences.
 | Same subtree / thread? | always — the child *is* in your subtree | maybe — the target may be on another site |
 | Call cost | direct, synchronous, lock-free | direct if same-site, else marshalled |
 | How you call | plain method call on the model | through a generated `<T>Ref` accessor, `await`ed |
-| Decoration | the type itself (no attribute) | the type itself (no attribute) |
-| Who populates it | the generated simulator (`Add`) | the generated simulator (`Add`) |
+| Decoration | the `[Contains<T>("Name")]` attribute on the model | the type itself (no attribute) |
+| Who populates it | the generated simulator (frozen via a factory, handed in through `init`) | the generated simulator (`Add`) |
 
-Both are "the type *is* the decoration": you signal ownership vs linkage purely by choosing `Container<T>` or
-`Reference<T>` — there is no `[Contained]`/`[Linked]` attribute.
+Containment is declared with a [`[Contains<T>("Name")]`](#/api/type/SimulaSharp.Kernel.Attributes.ContainsAttribute`1)
+decorator on the model — the generator emits a read-only `Container<T>` accessor of that name; a reference is still
+declared by the `Reference<T>` type itself. Neither needs you to write an `Add`: the generated simulator populates
+both while building the tree.
 
 ## Why two types at all
 

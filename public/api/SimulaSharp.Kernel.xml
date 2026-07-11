@@ -4,6 +4,43 @@
         <name>SimulaSharp.Kernel</name>
     </assembly>
     <members>
+        <member name="T:SimulaSharp.Kernel.Attributes.ContainsAttribute`1">
+            <summary>
+            Declares that the decorated model <b>contains</b> a list of sub-models of type <typeparamref name="T"/>,
+            surfaced as a read-only <see cref="T:SimulaSharp.Kernel.Primitives.Container`1"/> accessor named <see cref="P:SimulaSharp.Kernel.Attributes.ContainsAttribute`1.Name"/>. Containment is the
+            owning parent→child association: the contained subtree shares the parent's SimSite, so children are reached
+            by direct (same-thread) calls — no <c>Ref</c> wrapper.
+            <para>
+            The source generator emits a <c>public Container&lt;T&gt; {Name} { get; init; }</c> property on the
+            (<c>partial</c>) model and fills it during assembly from this instance's <c>Models</c> block in the YAML,
+            keyed by <see cref="P:SimulaSharp.Kernel.Attributes.ContainsAttribute`1.Name"/>. The accessor is read-only and <c>init</c>-only, so a model may enumerate its
+            children but never mutate the set after assembly. <typeparamref name="T"/> may be a concrete model class or
+            an interface (there is <b>no</b> <c>IModel</c> constraint — a framework-pure capability interface is fine);
+            every concrete child wired in is checked by the generator to be a model assignable to <typeparamref name="T"/>.
+            </para>
+            </summary>
+            <typeparam name="T">The contained sub-model type (a class or an interface).</typeparam>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.ContainsAttribute`1.#ctor(System.String)">
+            <summary>
+            Declares that the decorated model <b>contains</b> a list of sub-models of type <typeparamref name="T"/>,
+            surfaced as a read-only <see cref="T:SimulaSharp.Kernel.Primitives.Container`1"/> accessor named <see cref="P:SimulaSharp.Kernel.Attributes.ContainsAttribute`1.Name"/>. Containment is the
+            owning parent→child association: the contained subtree shares the parent's SimSite, so children are reached
+            by direct (same-thread) calls — no <c>Ref</c> wrapper.
+            <para>
+            The source generator emits a <c>public Container&lt;T&gt; {Name} { get; init; }</c> property on the
+            (<c>partial</c>) model and fills it during assembly from this instance's <c>Models</c> block in the YAML,
+            keyed by <see cref="P:SimulaSharp.Kernel.Attributes.ContainsAttribute`1.Name"/>. The accessor is read-only and <c>init</c>-only, so a model may enumerate its
+            children but never mutate the set after assembly. <typeparamref name="T"/> may be a concrete model class or
+            an interface (there is <b>no</b> <c>IModel</c> constraint — a framework-pure capability interface is fine);
+            every concrete child wired in is checked by the generator to be a model assignable to <typeparamref name="T"/>.
+            </para>
+            </summary>
+            <typeparam name="T">The contained sub-model type (a class or an interface).</typeparam>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.ContainsAttribute`1.Name">
+            <summary>The container accessor name: the generated property's name and the YAML <c>Models</c> key.</summary>
+        </member>
         <member name="T:SimulaSharp.Kernel.Attributes.KnobAttribute">
             <summary>
             Base for attributes that decorate model members to be exposed as knobs in the UI.
@@ -1033,16 +1070,25 @@
         </member>
         <member name="T:SimulaSharp.Kernel.Primitives.Container`1">
             <summary>
-            An <b>owning</b>, list-based association: the sub-models a parent model contains.
-            A contained model's subtree shares the parent's SimSite (assigned at construction
-            by the generated simulator), so this type carries no scheduling behaviour — it is
-            a typed, enumerable, tree-walkable collection that also signals "containment" to
-            the source generator (the type itself is the decoration; no attribute needed).
+            An <b>owning</b>, list-based association: the sub-models a parent model contains, declared via
+            <c>[Contains&lt;T&gt;("Name")]</c> on the model. A contained model's subtree shares the parent's SimSite
+            (assigned at construction by the generated simulator), so this type carries no scheduling behaviour.
+            <para>
+            It is a <b>frozen, read-only list</b>: the generated simulator builds it once through a
+            <see cref="T:SimulaSharp.Kernel.Primitives.ContainerFactory"/> (which casts the collected children to <typeparamref name="T"/> a single
+            time) and hands it to the parent through an <c>init</c>-only accessor. There is no public <c>Add</c> — a
+            model can enumerate and index its children but never mutate the set after assembly. There is no generic
+            constraint on <typeparamref name="T"/>; the source generator guarantees every element is a model
+            assignable to <typeparamref name="T"/>, so this stays a plain typed read-only list.
+            </para>
             </summary>
-            <typeparam name="T">The contained model type.</typeparam>
+            <typeparam name="T">The contained model type (a class or an interface).</typeparam>
         </member>
-        <member name="M:SimulaSharp.Kernel.Primitives.Container`1.Add(`0)">
-            <summary>Adds a child. Called by the generated simulator while building the model tree.</summary>
+        <member name="F:SimulaSharp.Kernel.Primitives.Container`1.Empty">
+            <summary>The empty container — the default an <c>init</c>-only accessor holds until the simulator fills it.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Primitives.Container`1.#ctor(System.Collections.Generic.IReadOnlyList{`0})">
+            <summary>Built only by <see cref="M:SimulaSharp.Kernel.Primitives.ContainerFactory.Build``1"/>, which supplies the frozen, typed items.</summary>
         </member>
         <member name="P:SimulaSharp.Kernel.Primitives.Container`1.Item(System.Int32)">
             <summary>The child at <paramref name="index"/>.</summary>
@@ -1052,6 +1098,24 @@
         </member>
         <member name="M:SimulaSharp.Kernel.Primitives.Container`1.GetEnumerator">
             <inheritdoc/>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Primitives.ContainerFactory">
+            <summary>
+            The build-time accumulator behind a <see cref="T:SimulaSharp.Kernel.Primitives.Container`1"/>. It is deliberately <b>non-generic</b> — its
+            only job during assembly is to gather the contained children as <see cref="T:SimulaSharp.Kernel.Model.IModel"/> — so the generated
+            simulator uses one factory shape for every containment regardless of element type. The element type appears
+            only on <see cref="M:SimulaSharp.Kernel.Primitives.ContainerFactory.Build``1"/>, which casts the gathered children to <c>T</c> a single time and returns a
+            frozen <see cref="T:SimulaSharp.Kernel.Primitives.Container`1"/>. The generator emits <c>new ContainerFactory()</c>, a
+            sequence of <c>Add(child)</c> calls, then <c>Build&lt;T&gt;()</c> passed to the parent's <c>init</c> accessor.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Primitives.ContainerFactory.Build``1">
+            <summary>
+            Freezes the gathered children into a read-only <see cref="T:SimulaSharp.Kernel.Primitives.Container`1"/>, casting each to
+            <typeparamref name="T"/> once. The cast never fails at runtime: the generator has already checked (SIM008)
+            that every child is assignable to <typeparamref name="T"/>.
+            </summary>
+            <typeparam name="T">The container element type (a class or an interface the children implement).</typeparam>
         </member>
         <member name="T:SimulaSharp.Kernel.Primitives.Reference`1">
             <summary>

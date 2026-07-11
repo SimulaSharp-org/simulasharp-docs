@@ -116,7 +116,7 @@ A model node is the workhorse. Its fields:
 | `Name` | scalar | The instance name; contributes to the dotted path. |
 | `Type` | scalar | Fully-qualified type; must implement `IModel` with the `(IClock, IScheduler, ILogger)` ctor. |
 | `Config` | map | Scalars bound to `[Parameter]` members ([Configuration](#/guide/configuration)). |
-| `Models` | list of `{ containerField: [children] }` | **Containment** — nests children into a `Container<T>` field. |
+| `Models` | list of `{ containerName: [children] }` | **Containment** — nests children into a `[Contains<T>]` container. |
 | `Refs` | list of `{ referenceField: [dotted.paths] }` | **References** — non-owning links into a `Reference<T>` field, by full instance path. |
 | `Deps` | list of `{ serviceRefMember: serviceName }` | **Service bindings** — assigns a named service to a `[ServiceRef]` member. |
 
@@ -205,15 +205,16 @@ error, not a cascade of downstream compile errors against a half-built class.
 | `SIM004` | Unknown type for an instance |
 | `SIM005` | Type does not implement `IModel`/`IService` |
 | `SIM006` | Type lacks the required constructor |
-| `SIM007` | Container field not found / not a `Container<T>` |
+| `SIM007` | Container name not found on the model (`[Contains<T>]`) |
 | `SIM008` | Contained type not assignable to the container's element type |
-| `SIM009` | Reference field not found / not a `Reference<T>` |
-| `SIM010` | Reference targets an unknown instance path |
-| `SIM011` | Referenced instance not assignable to the reference's element type |
-| `SIM012` | Dependency member not found / not `[ServiceRef]` |
-| `SIM013` | Dependency names an unknown service |
-| `SIM014` | Service not assignable to the dependency member |
-| `SIM015` | *(warning)* Config key with no matching `[Parameter]` member |
+| `SIM009` | Contained child is not a model (not `IModel`) |
+| `SIM010` | Reference field not found / not a `Reference<T>` |
+| `SIM011` | Reference targets an unknown instance path |
+| `SIM012` | Referenced instance not assignable to the reference's element type |
+| `SIM013` | Dependency member not found / not `[ServiceRef]` |
+| `SIM014` | Dependency names an unknown service |
+| `SIM015` | Service not assignable to the dependency member |
+| `SIM016` | *(warning)* Config key with no matching `[Parameter]` member |
 
 > **Consequence for design.** The assembly is a **statically-checked wiring diagram**. You cannot ship a simulator whose
 > tree does not typecheck against your models. When you rename a model field or change a type, the assembly fails to

@@ -2,8 +2,8 @@
 
 A **model** is the atom of a SimulaSharp simulation: a simulated entity with state and behaviour, written as a plain
 C# class. You describe how models *nest* — a plant contains pumps, a satellite contains subsystems — and the generator
-turns that nesting into a runnable tree. This page is about the model itself and the one containment primitive,
-[`Container<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Container`1).
+turns that nesting into a runnable tree. This page is about the model itself and the one containment decorator,
+[`[Contains<T>]`](#/api/type/SimulaSharp.Kernel.Attributes.ContainsAttribute`1).
 
 ## A model is a `ModelBase` subclass
 
@@ -119,35 +119,36 @@ generated) — must be declared `partial`, so the generator can weave its half i
 generated members can be `sealed` with no `partial`. When in doubt, mark it `partial`; it costs nothing.
 
 ```csharp
+[Contains<Unit>("Units")]                                     // containment (below) — no field needed
 public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     [Parameter(0)] public int Capacity { get; set; }              // generated config binding
-    public Container<Unit> Units { get; } = new();          // containment (below)
 }
 ```
 
-## Containment: `Container<T>` builds the tree
+## Containment: `[Contains<T>]` builds the tree
 
 A parent model expresses "I own these sub-models" with a
-[`Container<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Container`1) (`where T : IModel`). You declare it as an
-auto-property initialized to `new()`:
+[`[Contains<T>("Name")]`](#/api/type/SimulaSharp.Kernel.Attributes.ContainsAttribute`1) attribute on the class. The
+generator emits a read-only [`Container<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Container`1) accessor of that
+name — there is no field for you to declare:
 
 ```csharp
+[Contains<Unit>("Units")]                                     // the Plant owns a list of Units
 public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    public Container<Unit> Units { get; } = new();          // the Plant owns Units
 }
 ```
 
-`Container<T>` is an [`IReadOnlyList<T>`](#/api/type/System.Collections.Generic.IReadOnlyList`1) — you can index it,
-enumerate it, and walk the tree — plus one mutator, `Add(child)`. **You never call `Add` yourself.** The generated
-simulator calls it while building the tree from the [assembly](#/guide/the-assembly); the `Container<T>` on your class
-is a typed, read-only *view* of what the assembly declared.
+The generated `Units` accessor is an [`IReadOnlyList<T>`](#/api/type/System.Collections.Generic.IReadOnlyList`1) —
+you index it, enumerate it, and walk the tree — but there is **no `Add`**: it is `init`-only, filled once by the
+generated simulator while building the tree from the [assembly](#/guide/the-assembly), and immutable to your model
+thereafter.
 
-- **Key point.** The *type itself is the decoration.* Declaring a member as `Container<T>` is how you tell the
-  generator "this is containment" — there is no `[Contained]` attribute. Ownership is expressed by choosing the type,
-  exactly as a non-owning link is expressed by choosing `Reference<T>` (see
-  [associations](#/guide/associations)).
+- **Key point.** The `[Contains<T>("Name")]` decorator *is* the declaration — no container field, no `_`-prefixed
+  sibling. `T` may be a concrete model **or a framework-pure interface** (there is no `IModel` constraint); the
+  generator checks every wired child is a model assignable to `T`. Ownership is expressed with `[Contains]`, exactly
+  as a non-owning link is expressed with `Reference<T>` (see [associations](#/guide/associations)).
 
 ```mermaid
 graph TD
@@ -221,10 +222,9 @@ using SimulaSharp.Kernel.Model;
 using SimulaSharp.Kernel.Primitives;
 using SimulaSharp.Kernel.Services;
 
+[Contains<Unit>("Units")]
 public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    public Container<Unit> Units { get; } = new();
-
     public override void Configure()
     {
         // A supervisory heartbeat, once a second of real time.
@@ -246,7 +246,7 @@ public partial class Unit(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l
 }
 ```
 
-The `Plant` never constructs a `Unit`, never calls `Units.Add`, and never picks a scheduler — the
+The `Plant` never constructs a `Unit`, never fills `Units`, and never picks a scheduler — the
 [assembly](#/guide/the-assembly) declares the tree and the generated simulator does all three, handing every model in
 the subtree the same site.
 
@@ -254,6 +254,6 @@ the subtree the same site.
 
 - **[Associations: containment vs reference](#/guide/associations)** — the sibling primitive, `Reference<T>`, and how
   cross-site calls are generated and dispatched.
-- **[The assembly](#/guide/the-assembly)** — who calls `Container.Add`, and how you declare the tree and its sites.
+- **[The assembly](#/guide/the-assembly)** — who fills the container, and how you declare the tree and its sites.
 - **[Choosing a topology](#/guide/choosing-a-topology)** — how to decide subtree boundaries, i.e. how to parallelize.
 - **[SimSites & the actor model](#/guide/simsites-and-actors)** — what a site actually is under the hood.

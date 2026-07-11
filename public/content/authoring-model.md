@@ -64,9 +64,9 @@ public sealed class Heartbeat(IClock c, IScheduler s, ILogger l) : ModelBase(c, 
 
 Two things structure everything else you write:
 
-- **Containment** — a parent owns sub-models with a [`Container<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Container`1).
-  A root model and its **whole subtree share one SimSite** (one thread), so intra-subtree calls are direct and
-  lock-free. See [models & containment](#/guide/models-and-containment).
+- **Containment** — a parent owns sub-models via [`[Contains<T>]`](#/api/type/SimulaSharp.Kernel.Attributes.ContainsAttribute`1),
+  exposed as a read-only `Container<T>`. A root model and its **whole subtree share one SimSite** (one thread), so
+  intra-subtree calls are direct and lock-free. See [models & containment](#/guide/models-and-containment).
 - **References** — a non-owning link to a model you may not own, declared as a
   [`Reference<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Reference`1). You call it through a generated `<Type>Ref`
   accessor that auto-dispatches — synchronous if same-site, marshalled if cross-site. See
@@ -134,7 +134,7 @@ Full chapter: [services](#/guide/services). The *when* — model vs service — 
 
 The two C# artifacts say *what a model is*. The **assembly** says *what exists and where it runs*: it names the sites
 (threads), the services, and the model tree, and supplies each model's config. A model never `new`s a child, never calls
-`Container.Add`, never picks a scheduler — the assembly declares it and the generated simulator does all three.
+fills its containers, never picks a scheduler — the assembly declares it and the generated simulator does all three.
 
 ```yaml
 Simulator:
@@ -150,7 +150,7 @@ Simulator:
           Type: Demo.Plant
           Config: { Capacity: 5 }
           Models:
-            - Units:                        # fills the Plant's Container<Unit>
+            - Units:                        # fills the Plant's [Contains<Unit>] container
                 - Name: UnitA
                   Type: Demo.Unit
                   Config: { Rate: 1.5 }

@@ -27,7 +27,7 @@ Simulator:
         - Name: Plant1                 # instance name (path segment)
           Type: Demo.Plant             # fully-qualified type (must implement IModel)
           Config: { Capacity: 5 }      # [Parameter] members, key → scalar
-          Models:                      # containment: one entry per Container<T> field
+          Models:                      # containment: one entry per [Contains<T>] container
             - Units:                   # <containerField>: [ child nodes ]
                 - Name: UnitA
                   Type: Demo.Unit
@@ -80,7 +80,7 @@ Each node describes one model instance and its subtree.
 | `Name` | **yes** | — | Instance name; a segment of the dotted path. |
 | `Type` | **yes** | — | Fully-qualified type; must implement `IModel` and have a `(IClock, IScheduler, ILogger)` ctor. |
 | `Config` | no | *(none)* | Map of `[Parameter]` key → scalar (optional; an omitted key uses the parameter's attribute default, or errors if the parameter is `Required`). |
-| `Models` | no | *(none)* | **Containment.** A list of `{ <containerField>: [ child nodes ] }`; each key names a `Container<T>` field on this type. |
+| `Models` | no | *(none)* | **Containment.** A list of `{ <containerName>: [ child nodes ] }`; each key names a `[Contains<T>]` container on this type. |
 | `Refs` | no | *(none)* | **References.** A list of `{ <referenceField>: [ dotted.paths ] }`; each key names a `Reference<T>` field, each value a target instance path. |
 | `Deps` | no | *(none)* | **Service deps.** A list of `{ <serviceRefMember>: serviceName }` binding a `[ServiceRef]` member to a service instance. |
 
@@ -101,18 +101,19 @@ so there is no cascade — fix the reported id and rebuild.
 | **SIM004** | Unknown type. | The `Type` couldn't be found — use the fully-qualified name and ensure the type is referenced/compiled. |
 | **SIM005** | Wrong component kind. | The type doesn't implement the expected interface — a model must be `IModel`, a service `IService`. |
 | **SIM006** | Missing required constructor. | Give the type the ctor the framework calls: models `(IClock, IScheduler, ILogger)`, services `(IClock, ILogger)`. |
-| **SIM007** | Invalid `Container<T>` field. | The `Models` key doesn't name a `Container<T>` field on the type — check the field name/type. |
-| **SIM008** | Container element-type mismatch. | The child type isn't assignable to the container's `T` — fix the child `Type` or the container. |
-| **SIM009** | Invalid `Reference<T>` field. | The `Refs` key doesn't name a `Reference<T>` field on the type — check the field name/type. |
-| **SIM010** | Unresolved reference path. | The referenced instance path doesn't exist — correct the dotted path. |
-| **SIM011** | Reference type mismatch. | The referenced instance isn't assignable to the reference's `T` — point at a compatible instance. |
-| **SIM012** | Invalid `[ServiceRef]` dependency member. | The `Deps` key doesn't name a `[ServiceRef]` member on the type — check the member and its attribute. |
-| **SIM013** | Unknown service. | The dependency names a service not declared under `Services` — add it or fix the name. |
-| **SIM014** | Service type mismatch. | The named service isn't assignable to the `[ServiceRef]` member — bind a compatible service. |
-| **SIM015** | Unknown config key *(warning)*. | A `Config` key has no matching `[Parameter]` member — remove it, or add/rename the member. |
+| **SIM007** | Unknown container name. | The `Models` key doesn't name a `[Contains<T>]` container on the type — check the name against the attribute. |
+| **SIM008** | Container element-type mismatch. | A contained child isn't assignable to the container's `T` — fix the child `Type` or the `[Contains<T>]`. |
+| **SIM009** | Contained child is not a model. | A child under `Models` doesn't implement `IModel` — only models can be contained. |
+| **SIM010** | Invalid `Reference<T>` field. | The `Refs` key doesn't name a `Reference<T>` field on the type — check the field name/type. |
+| **SIM011** | Unresolved reference path. | The referenced instance path doesn't exist — correct the dotted path. |
+| **SIM012** | Reference type mismatch. | The referenced instance isn't assignable to the reference's `T` — point at a compatible instance. |
+| **SIM013** | Invalid `[ServiceRef]` dependency member. | The `Deps` key doesn't name a `[ServiceRef]` member on the type — check the member and its attribute. |
+| **SIM014** | Unknown service. | The dependency names a service not declared under `Services` — add it or fix the name. |
+| **SIM015** | Service type mismatch. | The named service isn't assignable to the `[ServiceRef]` member — bind a compatible service. |
+| **SIM016** | Unknown config key *(warning)*. | A `Config` key has no matching `[Parameter]` member — remove it, or add/rename the member. |
 | **SIM020** | Unsupported `[Plottable]` member type. | Make the plottable member a readable **numeric**, **bool**, or **enum** property. |
 
-> IDs **SIM016–SIM019** are unassigned. SIM001–SIM015 come from the simulator generator; SIM020 from the
+> IDs **SIM017–SIM019** are unassigned. SIM001–SIM016 come from the simulator generator; SIM020 from the
 > plottable generator.
 
 With a clean assembly, you have a runnable simulator — see **[Build, run & test](#/guide/build-run-test)**.
