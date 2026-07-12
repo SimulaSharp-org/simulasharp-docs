@@ -66,7 +66,7 @@ Simulator:
 
   Sites:                            # each site = one thread + one event queue
     - Name: Main
-      # MaxEvents: 1024             # optional per-site queue capacity (default 1024)
+      # MaxEvents: 64               # optional per-site queue capacity (default 64)
       Models:
         - Name: Plant1
           Type: Demo.Plant          # fully-qualified; ctor (IClock, IScheduler, ILogger)
@@ -104,7 +104,7 @@ an optional `Config` map. A service runs on its own thread; models bind to it th
 
 ### Sites
 
-Each site is a `Name`, an optional `MaxEvents` (event-queue capacity, default **1024**), and its root `Models`. A site
+Each site is a `Name`, an optional `MaxEvents` (event-queue capacity, default **64**), and its root `Models`. A site
 is one thread and one event queue; the whole subtree under it shares that site.
 
 ### Model nodes
@@ -143,7 +143,7 @@ public sealed class PlantSimulator : SimulatorBase
     {
         var __c0 = RegisterService(new Demo.DemoService(Clock, CreateLogger("Plant.Tracker")));
         CollectParametersFrom(__c0, "Plant.Tracker");
-        var __c1 = CreateSite("Main", 1024);
+        var __c1 = CreateSite("Main", 64);
         // Containment is built bottom-up: the children go into a ContainerFactory before the parent exists.
         var __c2 = new SimulaSharp.Kernel.Primitives.ContainerFactory();
         var __c3 = Register(new Demo.Unit(Clock, __c1, CreateLogger("Plant.Plant1.UnitA")));

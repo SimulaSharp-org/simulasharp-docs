@@ -228,7 +228,7 @@ Contrast that with the naive alternative — re-arming off "now":
 
 Two smaller details worth knowing:
 
-- **Capacity** is fixed at `maxEvents` (the `SimSite` constructor default is `1024`). Once every slot is live, further
+- **Capacity** is fixed at `maxEvents` (the `SimSite` constructor default is `64`). Once every slot is live, further
   `Add*` calls return **-1** until something frees a slot. Size it for your peak concurrent pending count; a full queue
   is a real condition your model code should handle, not ignore.
 - The **`Version`** counter on each slot guards against a **stale re-arm**. When a coroutine parks on an `Await`, the

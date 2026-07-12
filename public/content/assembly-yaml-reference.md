@@ -22,7 +22,7 @@ Simulator:
 
   Sites:
     - Name: Main                       # site (one thread, one event queue)
-      MaxEvents: 1024                  # optional; default 1024
+      MaxEvents: 64                    # optional; default 64
       Models:
         - Name: Plant1                 # instance name (path segment)
           Type: Demo.Plant             # fully-qualified type (must implement IModel)
@@ -68,7 +68,7 @@ unique and are what `Refs` target.
 | Field | Required | Default | Meaning |
 |---|---|---|---|
 | `Name` | **yes** | — | Site name. |
-| `MaxEvents` | no | `1024` | Capacity of the site's event queue. |
+| `MaxEvents` | no | `64` | Capacity of the site's event queue. |
 | `Models` | no | *(none)* | The **root model nodes** owned by this site. |
 
 ## Model node
