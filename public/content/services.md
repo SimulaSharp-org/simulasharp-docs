@@ -174,7 +174,8 @@ public Task Register(int unitId) => Site.InjectVoidAsync(() => Handle_Register(u
 public Task<int> Allocate(int want) => Site.InjectAsync(() => Handle_Allocate(want));
 ```
 
-- The handler may take **at most one argument** and may **return a value**.
+- The handler may take **at most one argument** (a single optional context) and may **return a value** — a handler with
+  more than one parameter is a build error ([SIM022](#/guide/assembly-yaml-reference)).
 - A `void` handler → a `Task`-returning caller (via `InjectVoidAsync`); a value handler → a `Task<T>`-returning caller
   (via `InjectAsync`).
 - The caller marshals onto **`Site`** — the *service's* own site (via the common `IDispatcher` facet) — so the handler

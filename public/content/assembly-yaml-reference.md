@@ -2,7 +2,7 @@
 
 The **assembly** is the YAML file that names your sites, services, and the model tree, and wires them together.
 The generator parses it (with YamlDotNet), validates it against your real types, and emits a
-`<Name>Simulator`. This page is the exhaustive schema plus the complete `SIM001`–`SIM021` diagnostics table. For
+`<Name>Simulator`. This page is the exhaustive schema plus the complete `SIM001`–`SIM022` diagnostics table. For
 the concepts, read **[the assembly](#/guide/the-assembly)**.
 
 Register the file by tagging it `<SimAssembly Include="…" />` in your csproj (any name — the `.simassembly.yaml`
@@ -89,7 +89,7 @@ Each node describes one model instance and its subtree.
 lists of single-key maps so one node can populate several fields. See
 **[models & containment](#/guide/models-and-containment)** and **[associations](#/guide/associations)**.
 
-## Diagnostics — SIM001–SIM021
+## Diagnostics — SIM001–SIM022
 
 Every problem is a **build error** (except SIM015, a **warning**). On any error the simulator is **not emitted**,
 so there is no cascade — fix the reported id and rebuild.
@@ -117,8 +117,9 @@ so there is no cascade — fix the reported id and rebuild.
 | **SIM019** | `[Triggerable]` method is not `void`. | A `[Triggerable]` interface method must return `void` (fire-and-forget has no result). |
 | **SIM020** | Unsupported `[Plottable]` member type. | Make the plottable member a readable **numeric**, **bool**, or **enum** property. |
 | **SIM021** | `[VolatileAccess]` property is not a gauge. | A `[VolatileAccess]` interface property must be get-only and of an atomically-readable type (primitive, enum, or reference). |
+| **SIM022** | Service request has more than one parameter. | A `[ServiceRequest] Handle_X` carries a single optional context — reduce it to zero or one parameter. |
 
 > SIM001–SIM019 come from the simulator/reference generators; SIM020 from the plottable generator; SIM021 from the
-> reference generator.
+> reference generator; SIM022 from the service generator.
 
 With a clean assembly, you have a runnable simulator — see **[Build, run & test](#/guide/build-run-test)**.
