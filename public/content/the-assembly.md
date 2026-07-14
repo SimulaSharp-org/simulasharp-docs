@@ -8,7 +8,7 @@ constructs the whole tree.
 - **The assembly is topology, not behaviour.** No logic lives here — only names, types, containment, references,
   service bindings, and config scalars.
 - **It is checked at compile time.** An unknown type, a container/element mismatch, a dangling reference, a missing
-  constructor — every one is a **compile error** (`SIM001`–`SIM015`), not a runtime failure. If it builds, the topology
+  constructor — every one is a **compile error** (`SIM001`–`SIM021`), not a runtime failure. If it builds, the topology
   is sound.
 - **The output is ordinary compiled code.** The generated `<Name>Simulator` carries no YAML parser and no reflection;
   the shipped product is just C#.
@@ -22,7 +22,7 @@ flowchart LR
   Y --> G["SimulatorGenerator"]
   T --> G
   G -->|"valid"| OUT["PlantSimulator : SimulatorBase<br/>(assembles in ctor)"]
-  G -->|"any error"| ERR["SIM001–SIM015<br/>build fails, no emission"]
+  G -->|"any error"| ERR["SIM001–SIM021<br/>build fails, no emission"]
 ```
 
 This page walks the structure and the generation. For the exhaustive field-by-field schema and every diagnostic, see
@@ -76,9 +76,12 @@ Simulator:
                 - Name: UnitA
                   Type: Demo.Unit
                   Config: { Rate: 1.5 }
-                  Refs:             # references: { <referenceFieldName>: [ dotted.paths ] }
+                  Refs:             # intra-site [Reference<T>]: { <name>: [ dotted.paths ] }
                     - Peers:
                         - Plant.Plant1.UnitB
+                  CRefs:            # cross-site [CrossReference<T>]: { <name>: [ dotted.paths ] }
+                    - Sinks:
+                        - Plant.Plant2.Drain
                 - Name: UnitB
                   Type: Demo.Unit
                   Config: { Rate: 2.5 }
@@ -117,7 +120,8 @@ A model node is the workhorse. Its fields:
 | `Type` | scalar | Fully-qualified type; must implement `IModel` with the `(IClock, IScheduler, ILogger)` ctor. |
 | `Config` | map | Scalars bound to `[Parameter]` members ([Configuration](#/guide/configuration)). |
 | `Models` | list of `{ containerName: [children] }` | **Containment** — nests children into a `[Contains<T>]` container. |
-| `Refs` | list of `{ referenceName: [dotted.paths] }` | **References** — non-owning links into a `[References<T>]` reference, by full instance path. |
+| `Refs` | list of `{ referenceName: [dotted.paths] }` | **Intra-site references** — same-site links into a `[Reference<T>]`, by full instance path. |
+| `CRefs` | list of `{ referenceName: [dotted.paths] }` | **Cross-site references** — links into a `[CrossReference<T>]`, by full instance path. |
 | `Deps` | list of `{ serviceRefMember: serviceName }` | **Service bindings** — assigns a named service to a `[ServiceRef]` member. |
 
 The **full dotted path** of an instance is its ancestry joined by dots, rooted at the simulator name:
@@ -125,8 +129,9 @@ The **full dotted path** of an instance is its ancestry joined by dots, rooted a
 logger issuer.
 
 > **Consequence for design.** Containment (`Models`) is **ownership** — a child lives inside its parent's
-> `Container<T>` and shares the parent's site. References (`Refs`) are **links** — a pointer to an instance that exists
-> somewhere else in the tree, addressed by path. Choose containment for "part of", references for "knows about". See
+> `Container<T>` and shares the parent's site. References are **links** — a pointer to an instance elsewhere in the tree,
+> addressed by path. Intra-site links go in `Refs` (`[Reference<T>]`, same site, direct); cross-site links go in `CRefs`
+> (`[CrossReference<T>]`, through a guarded `Ref`). Choose containment for "part of", a reference for "knows about". See
 > [associations](#/guide/associations) for the full story.
 
 ---
@@ -165,10 +170,11 @@ public sealed class PlantSimulator : SimulatorBase
         CollectPlottablesFrom(__c5, "Plant.Plant1");
         CollectParametersFrom(__c5, "Plant.Plant1");
         __c5.Tracker = __c0;                        // service dep binding
-        // Reference wiring: pre-wrap each target as a Ref into a RefCollection, then hand it to the seam.
-        var __c6 = new SimulaSharp.Kernel.Primitives.RefCollection();
-        __c6.Add(new Demo.UnitRef(__c4));
-        ((IReferenceWiring)__c3).WireReference("Peers", __c6);
+        // Intra-site reference (Refs): hand the target instances straight to the WireLocalReference seam — no Ref.
+        ((ILocalReferenceWiring)__c3).WireLocalReference("Peers", new List<IModel> { __c4 });
+        // Cross-site reference (CRefs) would instead build a RefCollection of
+        //   new Demo.IDrainRef((Demo.IDrain)target, targetSite, callerSite)   // captures both schedulers
+        // and call ((IReferenceWiring)__c3).WireReference("Sinks", refs).
         OnAssembled();
     }
 }
@@ -181,8 +187,10 @@ Read top to bottom, the generator's passes are:
    `ContainerFactory` (`Register(new Model(...))`, `__ApplyParameters`, `CollectKnobsFrom`/`CollectPlottablesFrom`/
    `CollectParametersFrom`, `factory.Add(child)`), then construct the parent with `{ <container> = factory.Build<T>() }`.
 3. **Service dependency binding** — after everything is constructed, `model.<member> = service`.
-4. **Reference wiring** — for each reference, build a `RefCollection` of pre-wrapped `new <Type>Ref(target)`, then
-   `((IReferenceWiring)model).WireReference("<name>", refs)` fills the read-only accessor.
+4. **Reference wiring** — for each intra-site `Refs` entry, hand the target instances to
+   `((ILocalReferenceWiring)model).WireLocalReference("<name>", targets)` (no Ref). For each cross-site `CRefs` entry,
+   build a `RefCollection` of `new <I>Ref((I)target, targetSched, callerSched)` and call
+   `((IReferenceWiring)model).WireReference("<name>", refs)`.
 
 Note the logger issuer for every component is its **full dotted path** (`Plant.Plant1.UnitA`), and the mission epoch is
 baked into the base ctor as a `DateTime` tick count — no parsing at run time.
@@ -191,7 +199,7 @@ baked into the base ctor as a `DateTime` tick count — no parsing at run time.
 flowchart TB
   S["1. services<br/>RegisterService + config"] --> ST["2. sites + model tree<br/>children → ContainerFactory →<br/>parent { container = Build&lt;T&gt;() }"]
   ST --> D["3. bind service deps<br/>model.member = service"]
-  D --> R["4. wire references<br/>new &lt;Type&gt;Ref → WireReference()"]
+  D --> R["4. wire references<br/>Refs → WireLocalReference()<br/>CRefs → new &lt;I&gt;Ref → WireReference()"]
 ```
 
 ---
@@ -215,13 +223,17 @@ error, not a cascade of downstream compile errors against a half-built class.
 | `SIM007` | Container name not found on the model (`[Contains<T>]`) |
 | `SIM008` | Contained type not assignable to the container's element type |
 | `SIM009` | Contained child is not a model (not `IModel`) |
-| `SIM010` | Reference name not found on the model (`[References<T>]`) |
+| `SIM010` | Reference name not found on the model (`[Reference<T>]` for `Refs`, `[CrossReference<T>]` for `CRefs`) |
 | `SIM011` | Reference targets an unknown instance path |
 | `SIM012` | Referenced instance not assignable to the reference's element type |
 | `SIM013` | Dependency member not found / not `[ServiceRef]` |
 | `SIM014` | Dependency names an unknown service |
 | `SIM015` | Service not assignable to the dependency member |
 | `SIM016` | *(warning)* Config key with no matching `[Parameter]` member |
+| `SIM017` | An intra-site `[Reference<T>]` targets an instance on a different site |
+| `SIM018` | A `[CrossReference<T>]` targets a concrete type instead of an interface |
+| `SIM019` | A `[Triggerable]` interface method does not return `void` |
+| `SIM021` | A `[VolatileAccess]` interface property is not a get-only, atomically-readable gauge |
 
 > **Consequence for design.** The assembly is a **statically-checked wiring diagram**. You cannot ship a simulator whose
 > tree does not typecheck against your models. When you rename a model field or change a type, the assembly fails to

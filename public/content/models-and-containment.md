@@ -114,8 +114,8 @@ surface.
 
 ## Models that use codegen must be `partial`
 
-Any model that touches a code-generated attribute — a knob, a `[Parameter]`, a `[References<T>]` (whose accessor is
-generated) — must be declared `partial`, so the generator can weave its half into your class. A model with *no*
+Any model that touches a code-generated attribute — a knob, a `[Parameter]`, a `[Reference<T>]`/`[CrossReference<T>]`
+(whose accessor is generated) — must be declared `partial`, so the generator can weave its half into your class. A model with *no*
 generated members can be `sealed` with no `partial`. When in doubt, mark it `partial`; it costs nothing.
 
 ```csharp
@@ -148,7 +148,8 @@ thereafter.
 - **Key point.** The `[Contains<T>("Name")]` decorator *is* the declaration — no container field, no `_`-prefixed
   sibling. `T` may be a concrete model **or a framework-pure interface** (there is no `IModel` constraint); the
   generator checks every wired child is a model assignable to `T`. Ownership is expressed with `[Contains]`, exactly
-  as a non-owning link is expressed with `[References<T>]` (see [associations](#/guide/associations)).
+  as a non-owning link is expressed with `[Reference<T>]` (same-site) or `[CrossReference<T>]` (cross-site) — see
+[associations](#/guide/associations).
 
 ```mermaid
 graph TD
@@ -197,7 +198,7 @@ Because the whole subtree lives on one thread:
   sibling reached through the tree) is a plain synchronous method call on the same thread. No message, no marshalling,
   no lock — you never write a lock inside a subtree.
 - **Cross-subtree calls are marshalled.** Reaching a model on *another* site (the blue → green dotted arrow above) goes
-  through that site's inbox. That is what `[References<T>]` and its generated accessors are for — covered in
+  through that site's inbox. That is what `[CrossReference<T>]` and its generated `Ref` accessors are for — covered in
   [associations](#/guide/associations).
 
 | Call | Same subtree (same site) | Different subtree (different site) |
@@ -252,7 +253,7 @@ the subtree the same site.
 
 ## Where to go next
 
-- **[Associations: containment vs reference](#/guide/associations)** — the sibling primitive, `[References<T>]`, and how
+- **[Associations: containment and references](#/guide/associations)** — the sibling primitives, `[Reference<T>]` and `[CrossReference<T>]`, and how
   cross-site calls are generated and dispatched.
 - **[The assembly](#/guide/the-assembly)** — who fills the container, and how you declare the tree and its sites.
 - **[Choosing a topology](#/guide/choosing-a-topology)** — how to decide subtree boundaries, i.e. how to parallelize.

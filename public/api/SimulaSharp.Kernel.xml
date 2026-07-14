@@ -41,6 +41,47 @@
         <member name="P:SimulaSharp.Kernel.Attributes.ContainsAttribute`1.Name">
             <summary>The container accessor name: the generated property's name and the YAML <c>Models</c> key.</summary>
         </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.CrossReferenceAttribute`1">
+            <summary>
+            Declares that the decorated model holds a <b>cross-site reference</b> — a non-owning link that may cross SimSite
+            boundaries — to a list of models of type <typeparamref name="T"/>, surfaced as a read-only
+            <c>IReference&lt;T&gt;Ref</c> accessor named <see cref="P:SimulaSharp.Kernel.Attributes.CrossReferenceAttribute`1.Name"/> whose elements are the generated guarded
+            <c>&lt;T&gt;Ref</c> accessors. Because a target may live on another thread, calls go through those Refs (same-site
+            calls resolve directly; cross-site calls marshal onto the target's site). Contrast the intra-site
+            <c>[Reference&lt;T&gt;]</c>, which is validated same-site and reached by direct synchronous calls with no Ref.
+            <para>
+            The source generator emits a <c>public IReference&lt;{T}Ref&gt; {Name} { get; }</c> accessor on the
+            (<c>partial</c>) model, backed by a hidden fillable list the generated simulator populates during assembly from
+            this instance's <c>Refs</c> block in the YAML, keyed by <see cref="P:SimulaSharp.Kernel.Attributes.CrossReferenceAttribute`1.Name"/> (targets given by full instance path).
+            The accessor is read-only. <typeparamref name="T"/> may be a concrete model class or an interface (there is no
+            <c>IModel</c> constraint); when it is an interface, the generator mints a companion <c>&lt;T&gt;Ref</c> interface
+            that every referenced model's Ref implements, so the reference is polymorphic over all implementations.
+            </para>
+            </summary>
+            <typeparam name="T">The referenced model type (a class or an interface).</typeparam>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.CrossReferenceAttribute`1.#ctor(System.String)">
+            <summary>
+            Declares that the decorated model holds a <b>cross-site reference</b> — a non-owning link that may cross SimSite
+            boundaries — to a list of models of type <typeparamref name="T"/>, surfaced as a read-only
+            <c>IReference&lt;T&gt;Ref</c> accessor named <see cref="P:SimulaSharp.Kernel.Attributes.CrossReferenceAttribute`1.Name"/> whose elements are the generated guarded
+            <c>&lt;T&gt;Ref</c> accessors. Because a target may live on another thread, calls go through those Refs (same-site
+            calls resolve directly; cross-site calls marshal onto the target's site). Contrast the intra-site
+            <c>[Reference&lt;T&gt;]</c>, which is validated same-site and reached by direct synchronous calls with no Ref.
+            <para>
+            The source generator emits a <c>public IReference&lt;{T}Ref&gt; {Name} { get; }</c> accessor on the
+            (<c>partial</c>) model, backed by a hidden fillable list the generated simulator populates during assembly from
+            this instance's <c>Refs</c> block in the YAML, keyed by <see cref="P:SimulaSharp.Kernel.Attributes.CrossReferenceAttribute`1.Name"/> (targets given by full instance path).
+            The accessor is read-only. <typeparamref name="T"/> may be a concrete model class or an interface (there is no
+            <c>IModel</c> constraint); when it is an interface, the generator mints a companion <c>&lt;T&gt;Ref</c> interface
+            that every referenced model's Ref implements, so the reference is polymorphic over all implementations.
+            </para>
+            </summary>
+            <typeparam name="T">The referenced model type (a class or an interface).</typeparam>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Attributes.CrossReferenceAttribute`1.Name">
+            <summary>The reference accessor name: the generated property's name and the YAML <c>Refs</c> key.</summary>
+        </member>
         <member name="T:SimulaSharp.Kernel.Attributes.KnobAttribute">
             <summary>
             Base for attributes that decorate model members to be exposed as knobs in the UI.
@@ -282,41 +323,45 @@
         <member name="P:SimulaSharp.Kernel.Attributes.PlottableAttribute.Unit">
             <summary>Optional unit for the plot axis (e.g. <c>"V"</c>, <c>"mA"</c>); null if unitless.</summary>
         </member>
-        <member name="T:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1">
+        <member name="T:SimulaSharp.Kernel.Attributes.ReferenceAttribute`1">
             <summary>
-            Declares that the decorated model holds a <b>reference</b> — a non-owning link — to a list of models of type
-            <typeparamref name="T"/>, surfaced as a read-only <c>IReference&lt;T&gt;Ref</c> accessor named <see cref="P:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1.Name"/>
-            whose elements are the generated guarded <c>&lt;T&gt;Ref</c> accessors. A reference may cross site boundaries, so
-            calls go through those Refs (same-site calls resolve directly; cross-site calls marshal onto the target's site).
+            Declares that the decorated model holds an <b>intra-site reference</b> — a non-owning link to a list of models of
+            type <typeparamref name="T"/> that are <b>guaranteed to share this model's SimSite</b> — surfaced as a read-only
+            <c>IReadOnlyList&lt;T&gt;</c> accessor named <see cref="P:SimulaSharp.Kernel.Attributes.ReferenceAttribute`1.Name"/>. Because the targets run on the same thread, they are
+            reached by <b>direct synchronous calls</b>: the accessor holds the target instances themselves, not guarded Refs,
+            and there is no marshalling. Contrast <c>[CrossReference&lt;T&gt;]</c>, which may cross site boundaries and goes
+            through a generated async Ref.
             <para>
-            The source generator emits a <c>public IReference&lt;{T}Ref&gt; {Name} { get; }</c> accessor on the
-            (<c>partial</c>) model, backed by a hidden fillable list the generated simulator populates during assembly from
-            this instance's <c>Refs</c> block in the YAML, keyed by <see cref="P:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1.Name"/> (targets given by full instance path).
-            The accessor is read-only. <typeparamref name="T"/> may be a concrete model class or an interface (there is no
-            <c>IModel</c> constraint); when it is an interface, the generator mints a companion <c>&lt;T&gt;Ref</c> interface
-            that every referenced model's Ref implements, so the reference is polymorphic over all implementations.
+            The source generator emits a <c>public IReadOnlyList&lt;T&gt; {Name} { get; }</c> accessor on the (<c>partial</c>)
+            model, filled during assembly from this instance's <c>Refs</c> block in the YAML, keyed by <see cref="P:SimulaSharp.Kernel.Attributes.ReferenceAttribute`1.Name"/>
+            (targets given by full instance path). Filling happens in a second pass after construction — so cyclic same-site
+            references are fine — and the set is never mutated afterward. Every wired target is validated by the generator to
+            be a model assignable to <typeparamref name="T"/> <em>and</em> to reside on the same site as this model.
+            <typeparamref name="T"/> may be a concrete model class or an interface (there is no <c>IModel</c> constraint).
             </para>
             </summary>
             <typeparam name="T">The referenced model type (a class or an interface).</typeparam>
         </member>
-        <member name="M:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1.#ctor(System.String)">
+        <member name="M:SimulaSharp.Kernel.Attributes.ReferenceAttribute`1.#ctor(System.String)">
             <summary>
-            Declares that the decorated model holds a <b>reference</b> — a non-owning link — to a list of models of type
-            <typeparamref name="T"/>, surfaced as a read-only <c>IReference&lt;T&gt;Ref</c> accessor named <see cref="P:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1.Name"/>
-            whose elements are the generated guarded <c>&lt;T&gt;Ref</c> accessors. A reference may cross site boundaries, so
-            calls go through those Refs (same-site calls resolve directly; cross-site calls marshal onto the target's site).
+            Declares that the decorated model holds an <b>intra-site reference</b> — a non-owning link to a list of models of
+            type <typeparamref name="T"/> that are <b>guaranteed to share this model's SimSite</b> — surfaced as a read-only
+            <c>IReadOnlyList&lt;T&gt;</c> accessor named <see cref="P:SimulaSharp.Kernel.Attributes.ReferenceAttribute`1.Name"/>. Because the targets run on the same thread, they are
+            reached by <b>direct synchronous calls</b>: the accessor holds the target instances themselves, not guarded Refs,
+            and there is no marshalling. Contrast <c>[CrossReference&lt;T&gt;]</c>, which may cross site boundaries and goes
+            through a generated async Ref.
             <para>
-            The source generator emits a <c>public IReference&lt;{T}Ref&gt; {Name} { get; }</c> accessor on the
-            (<c>partial</c>) model, backed by a hidden fillable list the generated simulator populates during assembly from
-            this instance's <c>Refs</c> block in the YAML, keyed by <see cref="P:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1.Name"/> (targets given by full instance path).
-            The accessor is read-only. <typeparamref name="T"/> may be a concrete model class or an interface (there is no
-            <c>IModel</c> constraint); when it is an interface, the generator mints a companion <c>&lt;T&gt;Ref</c> interface
-            that every referenced model's Ref implements, so the reference is polymorphic over all implementations.
+            The source generator emits a <c>public IReadOnlyList&lt;T&gt; {Name} { get; }</c> accessor on the (<c>partial</c>)
+            model, filled during assembly from this instance's <c>Refs</c> block in the YAML, keyed by <see cref="P:SimulaSharp.Kernel.Attributes.ReferenceAttribute`1.Name"/>
+            (targets given by full instance path). Filling happens in a second pass after construction — so cyclic same-site
+            references are fine — and the set is never mutated afterward. Every wired target is validated by the generator to
+            be a model assignable to <typeparamref name="T"/> <em>and</em> to reside on the same site as this model.
+            <typeparamref name="T"/> may be a concrete model class or an interface (there is no <c>IModel</c> constraint).
             </para>
             </summary>
             <typeparam name="T">The referenced model type (a class or an interface).</typeparam>
         </member>
-        <member name="P:SimulaSharp.Kernel.Attributes.ReferencesAttribute`1.Name">
+        <member name="P:SimulaSharp.Kernel.Attributes.ReferenceAttribute`1.Name">
             <summary>The reference accessor name: the generated property's name and the YAML <c>Refs</c> key.</summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Attributes.ServiceEventAttribute">
@@ -439,6 +484,36 @@
             <summary>
             Optional explicit request name. When null, the generator infers it from the
             handler method name by stripping the <c>Handle_</c> prefix.
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.TriggerableAttribute">
+            <summary>
+            Marks a <c>void</c> method on an interface used as a <c>[CrossReference&lt;T&gt;]</c> target as
+            <b>fire-and-forget</b>. On the generated <c>&lt;T&gt;Ref</c> the method returns <c>void</c>: a same-site caller
+            invokes the target directly (inline, immediately), while a cross-site caller <c>Post</c>s the call onto the target's
+            dispatcher and returns at once — there is no result to await. Use it for one-way notifications / commands (the
+            "notify" tier), where the async request/response surface (the default) would be needless overhead.
+            <para>
+            The method <b>must return <c>void</c></b> (there is nothing to hand back) and take no <c>out</c>/<c>ref</c>
+            parameters. This attribute is a pure code-generation hint on the interface contract; it is invisible to tooling that
+            reads the model's structure.
+            </para>
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.VolatileAccessAttribute">
+            <summary>
+            Marks a <b>get-only</b> property on an interface used as a <c>[CrossReference&lt;T&gt;]</c> target as a
+            <b>live gauge</b>. On the generated <c>&lt;T&gt;Ref</c> the property is a plain synchronous getter that reads the
+            target directly — no dispatch, no <c>Task</c>, no marshalling, no cache — so a caller on any thread reads the freshest
+            value with a single lock-free memory read (the "gauge" tier). Use it for a continuously-changing scalar (e.g. a live
+            power draw) that would be wasteful to pull through the async request/response surface.
+            <para>
+            The property <b>must be get-only</b> and of an <b>atomically-readable</b> type (a word-size primitive, an <c>enum</c>,
+            or a reference) — a larger struct can tear under a cross-thread read. Its freshness guarantee is <em>producer-side</em>:
+            the implementing model must back the getter with a volatile read of a single-producer field. A gauge read is <b>not</b>
+            ordered against <c>[Triggerable]</c> notifications — it bypasses the dispatcher entirely. This attribute is a pure
+            code-generation hint on the interface contract; it is invisible to tooling that reads the model's structure.
+            </para>
             </summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Knobs.IKnobChannel">
@@ -758,6 +833,20 @@
         </member>
         <member name="M:SimulaSharp.Kernel.Logging.LogRouter.Submit(SimulaSharp.Kernel.Logging.LogEntry@)">
             <inheritdoc/>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Model.ILocalReferenceWiring">
+            <summary>
+            Implemented (explicitly, by the source generator) by models that declare <c>[Reference&lt;T&gt;]</c> members
+            (intra-site references). After the generated simulator has constructed every instance, it calls
+            <see cref="M:SimulaSharp.Kernel.Model.ILocalReferenceWiring.WireLocalReference(System.String,System.Collections.Generic.IReadOnlyList{SimulaSharp.Kernel.Model.IModel})"/> once per reference with the target model instances themselves — no Ref wrapping,
+            because the targets share this model's SimSite and are reached by direct synchronous calls. The model casts each
+            target to its reference's element type and fills the hidden backing list. Implemented explicitly, so it stays off
+            the model's public surface. (Contrast <see cref="T:SimulaSharp.Kernel.Model.IReferenceWiring"/>, the cross-site variant that passes guarded
+            Refs through a <see cref="T:SimulaSharp.Kernel.Primitives.RefCollection"/>.)
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Model.ILocalReferenceWiring.WireLocalReference(System.String,System.Collections.Generic.IReadOnlyList{SimulaSharp.Kernel.Model.IModel})">
+            <summary>Fills the intra-site reference named <paramref name="member"/> from the target instances <paramref name="targets"/>.</summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Model.IModel">
             <summary>

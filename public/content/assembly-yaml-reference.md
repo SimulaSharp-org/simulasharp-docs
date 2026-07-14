@@ -2,7 +2,7 @@
 
 The **assembly** is the YAML file that names your sites, services, and the model tree, and wires them together.
 The generator parses it (with YamlDotNet), validates it against your real types, and emits a
-`<Name>Simulator`. This page is the exhaustive schema plus the complete `SIM001`–`SIM020` diagnostics table. For
+`<Name>Simulator`. This page is the exhaustive schema plus the complete `SIM001`–`SIM021` diagnostics table. For
 the concepts, read **[the assembly](#/guide/the-assembly)**.
 
 Register the file by tagging it `<SimAssembly Include="…" />` in your csproj (any name — the `.simassembly.yaml`
@@ -32,7 +32,7 @@ Simulator:
                 - Name: UnitA
                   Type: Demo.Unit
                   Config: { Rate: 1.5 }
-                  Refs:                # one entry per [References<T>] reference
+                  Refs:                # intra-site [Reference<T>] entries; use CRefs: for [CrossReference<T>]
                     - Peers:           # <referenceField>: [ dotted instance paths ]
                         - Plant.Plant1.UnitB
                 - Name: UnitB
@@ -81,14 +81,15 @@ Each node describes one model instance and its subtree.
 | `Type` | **yes** | — | Fully-qualified type; must implement `IModel` and have a `(IClock, IScheduler, ILogger)` ctor. |
 | `Config` | no | *(none)* | Map of `[Parameter]` key → scalar (optional; an omitted key uses the parameter's attribute default, or errors if the parameter is `Required`). |
 | `Models` | no | *(none)* | **Containment.** A list of `{ <containerName>: [ child nodes ] }`; each key names a `[Contains<T>]` container on this type. |
-| `Refs` | no | *(none)* | **References.** A list of `{ <referenceName>: [ dotted.paths ] }`; each key names a `[References<T>]` reference, each value a target instance path. |
+| `Refs` | no | *(none)* | **Intra-site references.** A list of `{ <referenceName>: [ dotted.paths ] }`; each key names a `[Reference<T>]` (same-site) on this type, each value a target instance path. |
+| `CRefs` | no | *(none)* | **Cross-site references.** A list of `{ <referenceName>: [ dotted.paths ] }`; each key names a `[CrossReference<T>]` (may cross sites) on this type, each value a target instance path. |
 | `Deps` | no | *(none)* | **Service deps.** A list of `{ <serviceRefMember>: serviceName }` binding a `[ServiceRef]` member to a service instance. |
 
-`Config` values are scalars (numbers, strings, bools) bound into `[Parameter]` members. `Models`/`Refs`/`Deps` are
+`Config` values are scalars (numbers, strings, bools) bound into `[Parameter]` members. `Models`/`Refs`/`CRefs`/`Deps` are
 lists of single-key maps so one node can populate several fields. See
 **[models & containment](#/guide/models-and-containment)** and **[associations](#/guide/associations)**.
 
-## Diagnostics — SIM001–SIM020
+## Diagnostics — SIM001–SIM021
 
 Every problem is a **build error** (except SIM015, a **warning**). On any error the simulator is **not emitted**,
 so there is no cascade — fix the reported id and rebuild.
@@ -104,16 +105,20 @@ so there is no cascade — fix the reported id and rebuild.
 | **SIM007** | Unknown container name. | The `Models` key doesn't name a `[Contains<T>]` container on the type — check the name against the attribute. |
 | **SIM008** | Container element-type mismatch. | A contained child isn't assignable to the container's `T` — fix the child `Type` or the `[Contains<T>]`. |
 | **SIM009** | Contained child is not a model. | A child under `Models` doesn't implement `IModel` — only models can be contained. |
-| **SIM010** | Unknown reference name. | The `Refs` key doesn't name a `[References<T>]` reference on the type — check the name against the attribute. |
+| **SIM010** | Unknown reference name. | The `Refs`/`CRefs` key doesn't name a `[Reference<T>]`/`[CrossReference<T>]` on the type — check the name and the block against the attribute. |
 | **SIM011** | Unresolved reference path. | The referenced instance path doesn't exist — correct the dotted path. |
 | **SIM012** | Reference type mismatch. | The referenced instance isn't assignable to the reference's `T` — point at a compatible instance. |
 | **SIM013** | Invalid `[ServiceRef]` dependency member. | The `Deps` key doesn't name a `[ServiceRef]` member on the type — check the member and its attribute. |
 | **SIM014** | Unknown service. | The dependency names a service not declared under `Services` — add it or fix the name. |
 | **SIM015** | Service type mismatch. | The named service isn't assignable to the `[ServiceRef]` member — bind a compatible service. |
 | **SIM016** | Unknown config key *(warning)*. | A `Config` key has no matching `[Parameter]` member — remove it, or add/rename the member. |
+| **SIM017** | Intra-site reference crosses a site. | A `Refs` (`[Reference<T>]`) target is on a different site — move it, or use `CRefs` (`[CrossReference<T>]`) for a cross-site link. |
+| **SIM018** | Cross-reference target is not an interface. | A `[CrossReference<T>]` must target an interface — introduce a capability interface for the boundary. |
+| **SIM019** | `[Triggerable]` method is not `void`. | A `[Triggerable]` interface method must return `void` (fire-and-forget has no result). |
 | **SIM020** | Unsupported `[Plottable]` member type. | Make the plottable member a readable **numeric**, **bool**, or **enum** property. |
+| **SIM021** | `[VolatileAccess]` property is not a gauge. | A `[VolatileAccess]` interface property must be get-only and of an atomically-readable type (primitive, enum, or reference). |
 
-> IDs **SIM017–SIM019** are unassigned. SIM001–SIM016 come from the simulator generator; SIM020 from the
-> plottable generator.
+> SIM001–SIM019 come from the simulator/reference generators; SIM020 from the plottable generator; SIM021 from the
+> reference generator.
 
 With a clean assembly, you have a runnable simulator — see **[Build, run & test](#/guide/build-run-test)**.
