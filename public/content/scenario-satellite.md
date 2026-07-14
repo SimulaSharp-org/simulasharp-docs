@@ -57,21 +57,24 @@ graph TB
 
 The full bodies are the same integrator/subscriber/reference patterns from the earlier scenarios;
 here are the shapes and what each exposes. Every model that carries a knob, plottable, config,
-`[ServiceRef]`, or `[References<T>]` is **`partial`**.
+`[ServiceRef]`, or `[CrossReference<T>]` is **`partial`**.
 
 ```csharp
 namespace Bird;
 
 // ── EPS subtree (site 'EPS') ──────────────────────────────────────────────────
+// Cross-references target an interface: the surface reached across sites lives on IEps.
+public interface IEps { double ReadStateOfCharge(); }
+
 [Contains<Battery>("Batteries")]                            // owned, same site → direct calls
 [Contains<Panel>("Panels")]
-public partial class Eps(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
+public partial class Eps(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l), IEps
 {
     [NumberKnob<double>("Bus voltage", Min = 0, Max = 32, DecimalPlaces = 2, IsReadOnly = true)]
     [Plottable("Vbus", Unit = "V")]
     public partial double Vbus { get; set; }
 
-    // Reached across sites by Comms via EpsRef.
+    // Reached across sites by Comms via IEpsRef.
     public double ReadStateOfCharge() => Batteries[0].ChargePct;
 
     public override void Configure() =>
@@ -112,11 +115,11 @@ public partial class Wheel(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
 }
 
 // ── Comms subtree (site 'Comms') ──────────────────────────────────────────────
-[References<Eps>("Power")]                            // cross-site link → EpsRef
+[CrossReference<IEps>("Power")]                      // cross-site link → IEpsRef
 public partial class Comms(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     [TickBoxKnob("Transmit")] public partial bool Transmit { get; set; }
-    // Configure(): a coroutine that Awaits Power[0].ReadStateOfCharge(Scheduler) before keying up.
+    // Configure(): a coroutine that Awaits Power[0].ReadStateOfCharge() before keying up.
 }
 
 // ── Environment service (its own site) ────────────────────────────────────────
@@ -199,7 +202,7 @@ The site boundaries *are* the design. Each choice is a threading and coupling de
   [modeling a subsystem](#/guide/modeling-a-subsystem).
 - **ADCS is a separate root.** Attitude runs a fast control loop on wheels that has *nothing* to do
   with the power balance — independent work, so give it its **own thread** and run it in parallel.
-- **Comms is a third root** and links to EPS with a `[References<Eps>]`, not containment: it merely
+- **Comms is a third root** and links to EPS with a `[CrossReference<IEps>]`, not containment: it merely
   *asks* the power state before transmitting. That is an occasional, marshalled cross-site call — the
   right cost for a loose, infrequent coupling. Contrast with the tight EPS-internal calls above.
 - **Environment is a service, not a model.** Sun angle and eclipse are shared by panels *and* ADCS,

@@ -35,12 +35,12 @@ flowchart TB
 ```
 
 - **Key point.** Because a service is *never* in a model's subtree, **every model↔service call is cross-thread** and
-  marshalled — always. There is no "same-site fast path" the way there is for a `[References<T>]`. That is the price and
+  marshalled — always. There is no "same-site fast path" the way there is for a `[CrossReference<T>]`. That is the price and
   the point: a service is a genuinely independent actor that any number of models can share safely.
 
 Reach for a service when a capability is **shared by many models** and has a **life of its own**. Reach for a plain
-model (owned via `Container<T>`) or a `[References<T>]` when the thing is really part of one subtree, or a point-to-point
-link. The full judgement call is in [model vs service](#/guide/model-vs-service).
+model (owned via `Container<T>`), a `[Reference<T>]` when the thing is really part of one subtree, or a
+`[CrossReference<T>]` for a point-to-point link. The full judgement call is in [model vs service](#/guide/model-vs-service).
 
 ## `ServiceBase`
 
@@ -398,7 +398,7 @@ public partial class Egse : LooselyCoupledServiceBase
 ## Where to go next
 
 - **[Model vs service](#/guide/model-vs-service)** — the judgement call: when a capability should be a service at all.
-- **[Associations](#/guide/associations)** — the other cross-thread partner, `[References<T>]`, and its same-site fast
+- **[Associations](#/guide/associations)** — the other cross-thread partner, `[CrossReference<T>]`, and its same-site fast
   path (which services never have).
 - **[The assembly](#/guide/the-assembly)** — declaring services and binding `[ServiceRef]` deps by name.
 - **[Interaction patterns](#/guide/interaction-patterns)** — putting events and requests together into real flows.

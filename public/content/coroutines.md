@@ -144,7 +144,7 @@ sequenceDiagram
   participant EQ as EventQueue A
   participant IB as Site A inbox
   participant B as Site B (peer)
-  CO->>B: task = peer.ReadX(Scheduler)  (InjectAsync → Site B)
+  CO->>B: task = peer.ReadX()  (InjectAsync → Site B)
   CO-->>EQ: yield Await(task)
   Note over EQ: park slot — no time-schedule
   Note over B: runs on B's thread, completes task
@@ -165,7 +165,7 @@ Because the task is guaranteed complete by the time the coroutine resumes, you r
 before — the value is sitting there ready:
 
 ```csharp
-var t = peer.ReadPressure(Scheduler);   // Task<double> from a cross-site InjectAsync
+var t = peer.ReadPressure();   // Task<double> from a cross-site InjectAsync (schedulers captured at construction)
 yield return SimYield.Await(t);         // park until it completes; site stays live
 double pressure = t.GetAwaiter().GetResult();   // safe: complete by now, won't block
 ```
@@ -196,11 +196,12 @@ A pump controller that runs a startup sequence, then loops: read a sensor on ano
 ms. `Ref` accessors are the generated cross-site call surface — see [associations](#/guide/associations).
 
 ```csharp
-[References<Sensor>("Sensors")]
+[CrossReference<ISensor>("Sensors")]
 public sealed partial class PumpController : ModelBase
 {
-    // [References<Sensor>] gives a generated SensorRef accessor with caller-scheduler-aware dispatch.
-    private SensorRef _sensor = default!;
+    // Cross-references target an interface: [CrossReference<ISensor>] gives a generated ISensorRef accessor
+    // with schedulers captured at construction (no per-call scheduler argument).
+    private ISensorRef _sensor = default!;
 
     public override void Configure()
     {
@@ -217,7 +218,7 @@ public sealed partial class PumpController : ModelBase
         while (true)
         {
             // Cross-site request → a Task; on the same site this is a direct read.
-            Task<double> reading = _sensor.ReadPressure(Scheduler);
+            Task<double> reading = _sensor.ReadPressure();
             yield return SimYield.Await(reading);  // park; the site keeps serving others
             double p = reading.GetAwaiter().GetResult();   // complete by now
 
@@ -245,7 +246,7 @@ What to notice:
 |---|---|
 | Write a multi-step, time-spanning process | `AddCoroutine(factory, delay)`; `yield return SimYield.Delay(...)` between steps |
 | Yield the thread without waiting | `yield return SimYield.Immediate` (resumes next pass) |
-| Wait on a cross-site reply | `var t = peer.Call(Scheduler); yield return SimYield.Await(t); var r = t.GetAwaiter().GetResult();` |
+| Wait on a cross-site reply | `var t = peer.Call(); yield return SimYield.Await(t); var r = t.GetAwaiter().GetResult();` |
 | Defer a process's *start* | `AddCoroutine(factory, delayUs)` — the body first runs at that delay |
 | End a process early | `yield break;` (or fall off the end) — it's disposed and its slot freed |
 | Do the same thing on a fixed grid | Use a [periodic event](#/guide/event-queue-and-scheduling) instead |

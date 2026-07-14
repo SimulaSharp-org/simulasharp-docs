@@ -75,7 +75,7 @@ private IEnumerator<SimYield> Process()
 
 ## 2. `.Result` / `.Wait()` on a cross-site call from a site thread
 
-The specific, common form of pitfall #1. A [`[References<T>]`](#/guide/associations) accessor or a
+The specific, common form of pitfall #1. A [`[CrossReference<T>]`](#/guide/associations) accessor or a
 [service request](#/guide/services) returns a `Task` that completes **later, on another thread**. Blocking on it *from a
 site thread* is a trap and often a **deadlock**: the target may need to `Post` a completion back through *your* site's
 inbox — which you're no longer draining, because you're blocked.
@@ -86,7 +86,7 @@ inbox — which you're no longer draining, because you're blocked.
 // BAD — blocks the site thread on a cross-site reply; can deadlock
 private void Step()
 {
-    double p = _Sensors[0].ReadPressure(Scheduler).Result;   // ← never do this on a site thread
+    double p = _Sensors[0].ReadPressure().Result;   // ← never do this on a site thread
     Actuate(p);
 }
 ```
@@ -96,12 +96,12 @@ private void Step()
 
 ```csharp
 // GOOD (coroutine) — parks the process, not the thread
-Task<double> t = _Sensors[0].ReadPressure(Scheduler);
+Task<double> t = _Sensors[0].ReadPressure();
 yield return SimYield.Await(t);
 Actuate(t.GetAwaiter().GetResult());        // complete by now, won't block
 
 // GOOD (plain event) — react on my own site, no blocking
-_Sensors[0].ReadPressure(Scheduler)
+_Sensors[0].ReadPressure()
     .ContinueWith(d => Scheduler.Post(() => Actuate(d.Result)), TaskScheduler.Default);
 ```
 
@@ -133,7 +133,7 @@ otherSiteModel.Buffer.Add(sample);   // ← Buffer belongs to another site's thr
 
 ```csharp
 // GOOD — the append runs on the owner's thread
-await _Other[0].Append(Scheduler, sample);    // Ref accessor → owner's site
+await _Other[0].Append(sample);    // Ref accessor → owner's site (schedulers captured at construction)
 // or fire-and-forget:
 otherScheduler.Post(() => owner.Append(sample));
 ```
@@ -231,10 +231,10 @@ observability](#/guide/observability-design).
 
 ## 9. Arming events in the constructor
 
-**Symptom:** an **empty** `[References<T>]` accessor, or a model that reads *default* config values, during setup.
+**Symptom:** an **empty** `[CrossReference<T>]` accessor, or a model that reads *default* config values, during setup.
 
 **Cause:** the constructor runs **before** the simulator wires references and fills [`[Parameter]`](#/guide/configuration).
-A `[References<T>]`'s generated accessor is still an empty list and your `[Parameter]` properties aren't populated yet.
+A `[CrossReference<T>]`'s generated accessor is still an empty list and your `[Parameter]` properties aren't populated yet.
 
 **Fix:** do all setup in [`Configure()`](#/guide/models-and-containment) — the earliest point the model is whole
 (constructed, wired, configured). Arm events, subscribe to services, and precompute there, never in the constructor.

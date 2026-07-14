@@ -50,8 +50,9 @@ flowchart TB
 ## You describe a tree; the generator wires it
 
 You author **models** (C# classes deriving [`ModelBase`](#/api/type/SimulaSharp.Kernel.Model.ModelBase)) and, when
-you need a shared capability, **services**. You express how models relate with two dedicated types —
-`Container<T>` for **ownership** (containment) and `[References<T>]` for **non-owning links**. You mark the values an
+you need a shared capability, **services**. You express how models relate with dedicated types —
+`Container<T>` for **ownership** (containment), `[Reference<T>]` for **intra-site non-owning links**, and
+`[CrossReference<T>]` for **possibly cross-site links**. You mark the values an
 operator should see or change with `[Knob]`/`[Plottable]`, and the values the assembly should fill with `[Parameter]`.
 
 Then you write a small **assembly** (`*.simassembly.yaml`) naming the sites, the services, and the model tree. At build

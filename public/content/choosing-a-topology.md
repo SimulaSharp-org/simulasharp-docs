@@ -216,7 +216,7 @@ This is worked end to end in the [satellite scenario](#/guide/scenario-satellite
 
 ## Watch the seams: chatty cross-site references
 
-A [`[References<T>]`](#/guide/associations) resolves *for free* when the target happens to share your site, and costs a
+A [`[CrossReference<T>]`](#/guide/associations) resolves *for free* when the target happens to share your site, and costs a
 marshal when it doesn't — but the source line is identical either way, so it's easy to miss. If profiling shows a site
 starved on cross-site round-trips, the fix is usually one of:
 

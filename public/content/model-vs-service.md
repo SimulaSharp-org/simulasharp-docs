@@ -54,7 +54,7 @@ flowchart TB
 | Fan-out broadcast to subscribers? | no primitive for it | `[ServiceEvent]` is exactly this |
 
 The last two rows are the tell. If making something a model would force half the tree to hold a cross-site
-`[References<T>]` into one subtree just to reach it, it wants to be a service. And if you need *broadcast* — "range
+`[CrossReference<T>]` into one subtree just to reach it, it wants to be a service. And if you need *broadcast* — "range
 updated," "eclipse started" — only a service's [`[ServiceEvent]`](#/guide/services) gives you fan-out.
 
 ## Decision flow
@@ -69,7 +69,7 @@ flowchart TD
   Q2 -->|"yes"| MODEL["MODEL<br/>Container&lt;T&gt; in the parent"]
   Q2 -->|"no — many models need it"| Q3
   Q3{"Point-to-point link to a<br/>specific peer, or broadcast/<br/>shared by many?"}
-  Q3 -->|"point-to-point"| REF["MODEL + Reference&lt;T&gt;<br/>(a link, not ownership)"]
+  Q3 -->|"point-to-point"| REF["MODEL + CrossReference&lt;T&gt;<br/>(a link, not ownership)"]
   Q3 -->|"broadcast / shared resource /<br/>blackboard"| SVC["SERVICE<br/>own site · ServiceEvent / ServiceRequest"]
   classDef m fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
   classDef s fill:#fef9c3,stroke:#ca8a04,color:#713f12;
@@ -77,7 +77,7 @@ flowchart TD
   class SVC s;
 ```
 
-There's a middle option worth naming: a thing can be a **model reached by `[References<T>]`** — still an owned entity in
+There's a middle option worth naming: a thing can be a **model reached by `[CrossReference<T>]`** — still an owned entity in
 *some* subtree, but linked to point-to-point from elsewhere. Reach for a full service only when the capability is
 genuinely *shared by many* and *owned by none*.
 
@@ -87,7 +87,7 @@ genuinely *shared by many* and *owned by none*.
 |---|---|---|
 | A **pump** in a plant | **Model**, contained | owned by the plant; its state is the plant's |
 | A **valve** the pump commands | **Model**, same subtree | owned; direct lock-free calls |
-| A **sensor** a controller on another site reads | **Model** + `[References<T>]` | still owned by its subsystem; just linked cross-site |
+| A **sensor** a controller on another site reads | **Model** + `[CrossReference<T>]` | still owned by its subsystem; just linked cross-site |
 | A **data bus** every subsystem talks on | **Service** | shared by all; owned by none; needs broadcast |
 | An **environment / FES blackboard** (orbit, weather, sun) | **Service** | many models sample it; it's the world, not a part |
 | A **shared resource pool** (channels, tokens) | **Service** | central state, allocated to many; `[ServiceRequest]` |
@@ -112,12 +112,12 @@ smell the table flags.
 | You have… | Make it a… |
 |---|---|
 | An entity owned by one parent | **Model** in a `Container<T>` |
-| An entity owned by one subtree but read by a specific peer elsewhere | **Model** + `[References<T>]` link |
+| An entity owned by one subtree but read by a specific peer elsewhere | **Model** + `[CrossReference<T>]` link |
 | A capability many unrelated models depend on | **Service** |
 | Shared world/environment state everyone samples | **Service** (blackboard) |
 | Broadcast "something changed" to subscribers | **Service** with `[ServiceEvent]` |
 | A shared resource to allocate on request | **Service** with `[ServiceRequest]` |
 
-Related reading: [services](#/guide/services) (the mechanics), [associations](#/guide/associations) (`Container<T>` vs
-`[References<T>]`), [choosing a topology](#/guide/choosing-a-topology) (where the sites fall), and the
+Related reading: [services](#/guide/services) (the mechanics), [associations](#/guide/associations) (`Container<T>` /
+`[Reference<T>]` / `[CrossReference<T>]`), [choosing a topology](#/guide/choosing-a-topology) (where the sites fall), and the
 [shared-service scenario](#/guide/scenario-shared-service) (a worked build).

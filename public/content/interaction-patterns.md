@@ -7,7 +7,7 @@ coupling, cost, and how you write the call.
 | # | Pattern | Coupling | Thread | Cost | Result | Reach for it when… |
 |---|---|---|---|---|---|---|
 | 1 | **Intra-subtree direct call** | tight (owned/same subtree) | caller's own | a method call | immediate return | the callee is in your [containment subtree](#/guide/models-and-containment) |
-| 2 | **Cross-site `[References<T>]`** | point-to-point link | target's | a marshal | a `Task` | a specific peer on another site |
+| 2 | **Cross-site `[CrossReference<T>]`** | point-to-point link | target's | a marshal | a `Task` | a specific peer on another site |
 | 3 | **Service** ([`[ServiceEvent]`](#/guide/services)/[`[ServiceRequest]`](#/guide/services)) | many-to-one, decoupled | service's | a marshal | fire-and-forget or `Task` | a shared capability many models use |
 
 ## Choosing among the three
@@ -19,7 +19,7 @@ flowchart TD
   Q1 -->|"yes"| DIRECT["1 · DIRECT CALL<br/>b.Method(args) — synchronous, lock-free"]
   Q1 -->|"no"| Q2
   Q2{"Is it a specific known<br/>peer, point-to-point?"}
-  Q2 -->|"yes"| REF["2 · REFERENCE<br/>await _B[i].Method(Scheduler, args)"]
+  Q2 -->|"yes"| REF["2 · REFERENCE<br/>await _B[i].Method(args)"]
   Q2 -->|"no — a shared capability<br/>used by many models"| Q3
   Q3{"Broadcast 'something<br/>changed' or ask for<br/>an answer?"}
   Q3 -->|"broadcast, no reply"| EVT["3a · SERVICE EVENT<br/>RegisterCallback_X + Trigger_X"]
@@ -67,23 +67,23 @@ Use it whenever you can. If your hottest call path *isn't* a direct call, recons
 
 ---
 
-## 2. Cross-site `[References<T>]`
+## 2. Cross-site `[CrossReference<T>]`
 
 A point-to-point link to a specific model that may live on another site. You declare it with
-[`[References<T>("Name")]`](#/guide/associations); the generator gives you a read-only `IReference<T>Ref` accessor of
-that name whose per-member methods take **your `Scheduler`** as the first argument and return a `Task`. The accessor
-auto-dispatches: same-site → runs directly and the `Task` is already complete; cross-site → marshalled via
-`InjectAsync` onto the target's thread.
+[`[CrossReference<T>("Name")]`](#/guide/associations); the target **must be an interface**. The generator gives you a
+read-only `<I>Ref` accessor of that name whose per-member methods **capture the schedulers at construction** — so calls
+take **no per-call scheduler argument** — and return a `Task`. The accessor auto-dispatches: same-site → runs directly
+and the `Task` is already complete; cross-site → marshalled via `InjectAsync` onto the target's thread.
 
 ```csharp
-[References<Sensor>("Sensors")]
+[CrossReference<ISensor>("Sensors")]     // cross-references target an interface; accessor is ISensorRef
 public sealed partial class Controller(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     private IEnumerator<SimYield> Loop()
     {
         while (true)
         {
-            Task<double> reading = Sensors[0].ReadPressure(Scheduler);    // pass YOUR scheduler
+            Task<double> reading = Sensors[0].ReadPressure();            // schedulers captured at construction
             yield return SimYield.Await(reading);                         // park the coroutine
             double p = reading.GetAwaiter().GetResult();                  // complete by now
             Actuate(p);
@@ -97,9 +97,9 @@ public sealed partial class Controller(IClock c, IScheduler s, ILogger l) : Mode
 sequenceDiagram
   autonumber
   participant C as Controller (Site A)
-  participant Ref as SensorRef
+  participant Ref as ISensorRef
   participant S as Sensor (Site B thread)
-  C->>Ref: ReadPressure(SchedulerA)
+  C->>Ref: ReadPressure()
   Ref->>Ref: caller==target scheduler? → no
   Ref->>S: InjectAsync(() => sensor.ReadPressure())
   Note over S: runs on B's thread at its next drain
@@ -184,7 +184,7 @@ The site keeps spinning; when the task completes, the coroutine resumes on its o
 ready. This reads top-to-bottom, like a story.
 
 ```csharp
-Task<double> t = _Sensors[0].ReadPressure(Scheduler);
+Task<double> t = _Sensors[0].ReadPressure();
 yield return SimYield.Await(t);                 // site stays live; only THIS process waits
 double p = t.GetAwaiter().GetResult();          // safe — complete by now, won't block
 ```
@@ -195,7 +195,7 @@ From a non-coroutine event where you can't yield, don't await inline — attach 
 back onto your own site**, so the reaction runs on your thread with no blocking:
 
 ```csharp
-Task<double> t = _Sensors[0].ReadPressure(Scheduler);
+Task<double> t = _Sensors[0].ReadPressure();
 t.ContinueWith(done =>
     Scheduler.Post(() => Actuate(done.Result)),  // hop back onto MY site to touch state
     TaskScheduler.Default);
@@ -221,7 +221,7 @@ Both keep the thread free; both make the reaction run on *your* site so it can t
 | You want to… | Use |
 |---|---|
 | Call a model in your own subtree | direct method call — synchronous, lock-free |
-| Call a specific peer on another site | a [`[References<T>]`](#/guide/associations) accessor: `_B[i].M(Scheduler, …)` |
+| Call a specific peer on another site | a [`[CrossReference<T>]`](#/guide/associations) accessor: `_B[i].M(…)` |
 | Broadcast "something changed" to many models | a [`[ServiceEvent]`](#/guide/services) + local cache |
 | Ask a shared capability for an answer | a [`[ServiceRequest]`](#/guide/services): `await svc.X(arg)` |
 | Read a cross-thread reply from a process | `yield return SimYield.Await(task)` in a [coroutine](#/guide/coroutines) |
