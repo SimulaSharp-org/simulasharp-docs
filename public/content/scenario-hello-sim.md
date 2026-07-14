@@ -82,7 +82,7 @@ suffix is just a convention).
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="SimulaSharp" Version="0.2.0" />
+    <PackageReference Include="SimulaSharp" Version="0.3.0" />
   </ItemGroup>
 </Project>
 ```
