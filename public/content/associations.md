@@ -1,256 +1,174 @@
-# Associations: containment vs reference
+# Associations: containment and references
 
 A model rarely stands alone. It **owns** sub-models, and it **links** to other models it does not own. SimulaSharp
-gives you two dedicated types for exactly these two relationships — and keeps them separate on purpose, because they
-have completely different threading consequences.
+gives you dedicated relationships for each — and keeps them separate on purpose, because they have completely different
+threading consequences. There are three:
 
-| | [`Container<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Container`1) | [`IReference<T>Ref`](#/api/type/SimulaSharp.Kernel.Primitives.IReference`1) |
-|---|---|---|
-| Relationship | **owns** (containment) | **links** (non-owning) |
-| Same subtree / thread? | always — the child *is* in your subtree | maybe — the target may be on another site |
-| Call cost | direct, synchronous, lock-free | direct if same-site, else marshalled |
-| How you call | plain method call on the model | through a generated `<T>Ref` accessor, `await`ed |
-| Decoration | the `[Contains<T>("Name")]` attribute on the model | the `[References<T>("Name")]` attribute on the model |
-| Who populates it | the generated simulator (frozen via a factory, handed in through `init`) | the generated simulator (a second wiring pass) |
+| | [`[Contains<T>]`](#/api/type/SimulaSharp.Kernel.Attributes.ContainsAttribute`1) | [`[Reference<T>]`](#/api/type/SimulaSharp.Kernel.Attributes.ReferenceAttribute`1) | [`[CrossReference<T>]`](#/api/type/SimulaSharp.Kernel.Attributes.CrossReferenceAttribute`1) |
+|---|---|---|---|
+| Relationship | **owns** (containment) | **links, same site** | **links, may cross sites** |
+| Target `T` | class or interface | class or interface | **interface only** |
+| Same thread? | always | **always** (validated) | maybe |
+| Call cost | direct, synchronous | direct, synchronous | direct if same-site, else marshalled |
+| Accessor | `Container<T>` | `IReadOnlyList<T>` | `IReference<T Ref>` (guarded `Ref`s) |
+| YAML block | `Models:` | `Refs:` | `CRefs:` |
 
-Both are declared with a decorator — [`[Contains<T>("Name")]`](#/api/type/SimulaSharp.Kernel.Attributes.ContainsAttribute`1)
-or [`[References<T>("Name")]`](#/api/type/SimulaSharp.Kernel.Attributes.ReferencesAttribute`1) — and the generator emits
-a read-only accessor of that name (a `Container<T>` for containment, an `IReference<T>Ref` for a reference). Neither
-needs you to write an `Add`: the generated simulator populates
-both while building the tree.
+The rule of thumb: **`[Contains<T>]`** for what you own, **`[Reference<T>]`** for a co-located collaborator, and
+**`[CrossReference<T>]`** only when the link genuinely crosses a thread boundary — because only that last one pays the
+cross-thread cost.
 
-## Why two types at all
+## Why the split — a free call vs a cross-thread message
 
-The distinction is not bookkeeping — it is the difference between a **free call** and a **cross-thread message**.
+A **contained** model and an **intra-site reference** both share your SimSite (see
+[models & containment](#/guide/models-and-containment)): calling them is a plain synchronous method invocation on the
+same thread — no marshalling, no `await`, no `Ref`. The difference between the two is only *ownership*: containment owns
+the child (its whole subtree is yours); a `[Reference<T>]` is a non-owning link to a sibling that happens to live on the
+same site. The generator **validates** that an intra-site reference really is same-site (`SIM017` if a wiring crosses a
+site), so you can rely on the direct call.
 
-- A **contained** model shares your SimSite (see [models & containment](#/guide/models-and-containment)). Calling it is
-  a plain synchronous method invocation on the same thread. No marshalling, no `await`.
-- A **referenced** model might live in a *different* subtree, on a *different* site, running on a *different* thread.
-  You cannot just call it — that would be a data race. The call has to be marshalled onto the target's thread.
-
-If both used one type, every call would have to assume the worst and marshal. By splitting them, containment stays
-free and only references pay for what they might cross.
+A **cross-site reference** is the only one that might reach a model on a *different* thread. You cannot just call it —
+that would be a data race — so the call goes through a generated guarded `Ref` that marshals onto the target's thread
+when needed. Because the target may be anything on the far side of that boundary, `[CrossReference<T>]` requires `T` to
+be an **interface** (`SIM018` otherwise): the boundary is expressed as a contract, not a concrete type.
 
 ```mermaid
 graph TB
-  subgraph siteA ["SimSite A"]
-    Radar["Radar"]
-    T0["Tracker #0"]
-    T1["Tracker #1"]
-    Radar -->|"Container&lt;Tracker&gt;<br/>direct call"| T0
-    Radar -->|"Container&lt;Tracker&gt;<br/>direct call"| T1
+  subgraph siteA ["SimSite A (EPS)"]
+    Eps["Eps"]
+    Bp["Battery pack"]
+    Pdm["PDM"]
+    Eps -->|"Contains&lt;Battery&gt;<br/>direct"| Bp
+    Bp -->|"Reference&lt;IPdm&gt;<br/>direct, same site"| Pdm
   end
-  subgraph siteB ["SimSite B"]
-    U0["Unit #0"]
-    U1["Unit #1"]
-    U0 -->|"Reference&lt;Unit&gt; Peers<br/>same site ⇒ direct"| U1
+  subgraph siteB ["SimSite B (ADCS)"]
+    Adcs["Adcs"]
   end
-  T1 -. "Reference&lt;Unit&gt; ⇒ marshalled" .-> U0
+  Pdm -. "CrossReference&lt;IPowerConsumer&gt;<br/>marshalled / posted" .-> Adcs
   classDef a fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
   classDef b fill:#dcfce7,stroke:#16a34a,color:#14532d;
-  class Radar,T0,T1 a;
-  class U0,U1 b;
+  class Eps,Bp,Pdm a;
+  class Adcs b;
 ```
 
-## Declaring a reference
+## Intra-site references — `[Reference<T>]`
 
-You declare a reference with a **`[References<T>("Name")]`** decorator on the model — the mirror of `[Contains<T>]`.
-The generator emits a read-only accessor of that name; there is no field to write:
-
-```csharp
-[References<Tracker>("Trackers")]                       // non-owning link to Trackers
-public partial class Radar(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
-{
-}
-```
-
-`T` may be a concrete model **or an interface** (there is no `IModel` constraint). The generated `Trackers` accessor is
-an [`IReference<TrackerRef>`](#/api/type/SimulaSharp.Kernel.Primitives.IReference`1) — a read-only list of the guarded
-`<Type>Ref` accessors. You never get a raw model out of a reference: all access goes through a `Ref`, so a cross-thread
-call can never happen unmarshalled.
-
-## The generated `<Type>Ref` — one accessor per member
-
-For **every** type that implements `IModel`, the [`RefGenerator`](#/api/type/SimulaSharp.CodeGen.RefGenerator) emits a
-sealed `<Name>Ref` class that wraps one model instance and exposes **one async accessor per public member**:
-
-- **Methods** are surfaced verbatim (same name, same parameters), returning `Task` or `Task<TReturn>`.
-- **Properties and fields** are surfaced as `Get<Name>` / `Set<Name>` accessors.
-- **Excluded**, never surfaced: `Configure`, `Dispose`, `TimeKeeper`, `Scheduler`, `Logger`, and the `object`
-  overrides `ToString`/`Equals`/`GetHashCode`. (Generic methods and by-ref parameters are skipped in v1.)
-
-So for this model:
+Declare a same-site link with **`[Reference<T>("Name")]`**. The generator emits a read-only `IReadOnlyList<T>` accessor
+holding the **target instances themselves** — no `Ref`, no marshalling. You call them directly:
 
 ```csharp
-public sealed class Tracker(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
+[Reference<IPdm>("Pdm")]                                // same-site sibling, reached directly
+public partial class BatteryPack(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    public double Interrogate(int ping) => ping;
-    public void Reset() { }
-}
-```
-
-the generator produces (shape, simplified):
-
-```csharp
-public sealed class TrackerRef : IModelRef
-{
-    private readonly Tracker _target;
-    public TrackerRef(Tracker target) => _target = target;
-
-    public Task<double> Interrogate(IScheduler callerScheduler, int ping)
+    private void Step()
     {
-        if (ReferenceEquals(callerScheduler, _target.Scheduler))
-            return Task.FromResult(_target.Interrogate(ping));      // same site — synchronous
-        return _target.Scheduler.InjectAsync(() => _target.Interrogate(ping)); // cross site — marshalled
+        // Direct, synchronous — Pdm[0] IS the model instance, on this very thread.
+        double draw = Pdm.Count > 0 ? Pdm[0].RailDraw : 0;
+        // …integrate the battery with `draw`…
     }
+}
+```
 
-    public Task Reset(IScheduler callerScheduler)
+`T` may be a concrete class or an interface (there is no `IModel` constraint). The set is filled in a **second pass**
+after construction, so **cyclic same-site references are fine** (A links B, B links A). It is never mutated afterward.
+
+## Cross-site references — `[CrossReference<T>]` and the generated `Ref`
+
+Declare a link that may cross a thread with **`[CrossReference<T>("Name")]`**, where **`T` is an interface**. The
+accessor is an [`IReference<T Ref>`](#/api/type/SimulaSharp.Kernel.Primitives.IReference`1) — a read-only list of guarded
+`Ref`s. For each interface `I` used this way, the [`RefGenerator`](#/api/type/SimulaSharp.CodeGen.RefGenerator) emits
+**one** `<I>Ref` class that wraps an `I` target and **captures both schedulers at construction** — the target's and the
+caller's — so no scheduler is passed per call. Same-site vs cross-site is decided once, by
+`ReferenceEquals(callerSched, targetSched)`, behind a uniform surface.
+
+Each member of the interface is routed by a **three-tier taxonomy** you choose by decorating the interface:
+
+| Interface member | Decorate with | On the `Ref` | Cost |
+|---|---|---|---|
+| `void M(…)` | [`[Triggerable]`](#/api/type/SimulaSharp.Kernel.Attributes.TriggerableAttribute) | `void M(…)` — fire-and-forget | an enqueue (or inline same-site) |
+| `T P { get; }` | [`[VolatileAccess]`](#/api/type/SimulaSharp.Kernel.Attributes.VolatileAccessAttribute) | `T P { get; }` — direct read | a memory read |
+| method / property | *(none)* | `Task<T> M(…)` / `Get`/`Set` | a marshalled round-trip |
+
+Think **notify / gauge / ask**. You pick per member by intent:
+
+```csharp
+public interface IPowerConsumer
+{
+    // "notify" — fire-and-forget: post the new budget, don't wait for anything.
+    [Triggerable] void OnAvailableChanged(double watts);
+
+    // "gauge" — a live scalar read directly, no dispatch, no cache.
+    [VolatileAccess] double CurrentDrawW { get; }
+
+    // "ask" — a genuine cross-thread request/response, awaited.
+    Task<string> DescribeState();
+}
+```
+
+- **`[Triggerable]`** is one-way. Because there is no result, the same-site path is a plain inline call and the
+  cross-site path is a `Post` onto the target's dispatcher — both return `void`, so a mixed collection of targets is
+  uniform. Use it for propagation (e.g. pushing availability down a power tree). The method **must return `void`**
+  (`SIM019` otherwise).
+- **`[VolatileAccess]`** is a live gauge: the `Ref` reads `_target.P` directly with no dispatch, no `Task`, no cache — a
+  single lock-free memory read from any thread. Its freshness is *producer-side* (the implementing model backs the
+  getter with a volatile read of a single-producer field); a gauge read is **not** ordered against `[Triggerable]`
+  notifications. The property **must be get-only and of an atomically-readable type** — a word-size primitive, an
+  `enum`, or a reference (`SIM021` otherwise). Use it for a continuously-changing value that would be wasteful to pull.
+- **Default** members are the only ones that pay the async cost: same-site they run inline and hand back a completed
+  `Task`; cross-site they marshal onto the target via
+  [`InjectAsync`](#/api/type/SimulaSharp.Kernel.Services.IScheduler)/`InjectVoidAsync`. As with intra references, a
+  property `P` becomes `GetP()`/`SetP(…)`; a method keeps its name.
+
+Calling through a cross-reference, using the `IReference<IPowerConsumerRef>` accessor:
+
+```csharp
+[CrossReference<IPowerConsumer>("Consumers")]
+public partial class Rail(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
+{
+    private async Task Recompute()
     {
-        if (ReferenceEquals(callerScheduler, _target.Scheduler))
+        double total = 0;
+        foreach (var c in Consumers)
         {
-            _target.Reset();
-            return Task.CompletedTask;
+            total += c.CurrentDrawW;             // [VolatileAccess] gauge — direct, synchronous
+            c.OnAvailableChanged(_available);    // [Triggerable] — fire-and-forget
         }
-        return _target.Scheduler.InjectVoidAsync(() => _target.Reset());
+        if (total > _limit) { /* … */ await Consumers[0].DescribeState(); }  // default — awaited
     }
 }
 ```
-
-## Caller-site dispatch — the key idea
-
-Every generated accessor takes the **caller's scheduler as its first argument**, and branches on it:
-
-```mermaid
-flowchart TD
-  Call["caller invokes<br/>ref.Method(Scheduler, args)"] --> Cmp{"callerScheduler ==<br/>target.Scheduler ?"}
-  Cmp -->|"same site"| Direct["run directly on this thread<br/>Task.FromResult / CompletedTask<br/><b>completes synchronously</b>"]
-  Cmp -->|"different site"| Marshal["target.Scheduler.InjectAsync /<br/>InjectVoidAsync — runs on<br/><b>target's thread</b>, awaited"]
-```
-
-- **Same site** (`ReferenceEquals(callerScheduler, target.Scheduler)`): the call runs **directly** on the current
-  thread and the returned `Task` is *already completed* (`Task.FromResult` / `Task.CompletedTask`). `await`ing it is
-  free — no context switch, no allocation-heavy state machine suspension.
-- **Different site**: the call is **marshalled** onto the target's site via
-  [`InjectAsync`](#/api/type/SimulaSharp.Kernel.Services.IScheduler)/`InjectVoidAsync`. The lambda runs on the
-  *target's* thread during its next drain, and your `await` resumes when it completes.
-
-The single accessor shape handles both cases — you write the *same* call either way, and the runtime picks direct or
-marshalled from the schedulers. That is why you always pass your own `Scheduler`: it is the caller's identity.
-
-> **Consequence for design.** Correctness never depends on knowing where the target lives — the accessor does the
-> right thing. But *performance* does: a reference you happen to resolve same-site is as cheap as a contained call,
-> while a genuinely cross-site reference costs a marshal per call. Chatty cross-site references are the thing to notice
-> when [choosing a topology](#/guide/choosing-a-topology).
-
-## Calling through a reference
-
-The [`ReferenceGenerator`](#/api/type/SimulaSharp.CodeGen.ReferenceGenerator) emits, for each `[References<T>]` on a
-**`partial`** model, a read-only `public IReference<TRef> Name` accessor (backed by a hidden fillable list). So
-`[References<Tracker>("Trackers")]` gives a `Trackers` of type
-[`IReference<TrackerRef>`](#/api/type/SimulaSharp.Kernel.Primitives.IReference`1). You call peers through it, passing
-your own `Scheduler` and `await`ing:
-
-```csharp
-[References<Tracker>("Trackers")]
-public partial class Radar(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
-{
-    public async Task Probe()
-    {
-        // Pass YOUR Scheduler — the accessor decides direct vs marshalled from it.
-        double echo = await Trackers[0].Interrogate(Scheduler, 42);
-        Logger.Trace($"echo={echo}");
-    }
-}
-```
-
-`IReference<TRef>` is an `IReadOnlyList<TRef>` — index it (`Trackers[0]`), check `Trackers.Count`, and enumerate the
-`Ref`s. Here is the same pattern from the real `Unit` model, guarding on `Count`:
-
-```csharp
-[References<Unit>("Peers")]                              // reference to sibling Units
-public partial class Unit(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
-{
-    [Parameter(0.0)] public double Rate { get; set; }
-
-    public async Task<double> PeerRate()
-        => Peers.Count > 0 ? await Peers[0].GetRate(Scheduler) : 0;
-    //                                 ^^^^^^^ generated Get accessor for the `Rate` property
-}
-```
-
-- **Key point.** `Rate` is a property, so its accessor is `GetRate` (and `SetRate`); a method like `Interrogate` keeps
-  its name. Everything returns a `Task`/`Task<T>`, so it is always `await`ed.
-
-**Interface targets are polymorphic.** When `T` is an interface, the generator also mints a companion `<T>Ref`
-*interface* declaring the same accessor signatures, and makes every implementing model's Ref implement it. So
-`[References<IPowerSource>("Sources")]` yields an `IReference<IPowerSourceRef>` that can hold the concrete Ref of *any*
-`IPowerSource` model — you call `Sources[i].GetAvailableW(Scheduler)` without caring which implementation it is.
 
 ## How the two sides get wired
 
-The read side is the model's `IReference<TRef>` accessor; the write side is the hidden `FillableReference<TRef>` it is
-backed by. The generator's explicit
-[`IReferenceWiring.WireReference`](#/api/type/SimulaSharp.Kernel.Model.IReferenceWiring) bridges them. Because a
-reference graph can be **cyclic** (A links B, B links A), wiring is a **second pass**, after every instance exists —
-it cannot be done at construction the way owned containment can. The simulator:
+You declare the targets in the assembly YAML, in the block that matches the reference kind — **`Refs:`** for intra-site
+`[Reference<T>]`, **`CRefs:`** for cross-site `[CrossReference<T>]` — each an entry of `{ Name: [full.instance.paths] }`.
+Wiring is a **second pass**, after every instance exists (so cyclic links work). The generated simulator:
 
-1. constructs all models (each reference starts empty),
-2. for each reference, builds a `RefCollection` of the target `Ref`s — `new <ConcreteType>Ref(target)`, which only the
-   simulator can do because only it knows each target's concrete type,
-3. calls `WireReference("Name", refs)`, whose generated body downcasts each `Ref` to the reference's element type and
-   fills the hidden `FillableReference`,
+1. constructs all models (each reference starts empty);
+2. for an intra `Refs:` entry, hands the target **instances** to the model's hidden
+   [`ILocalReferenceWiring.WireLocalReference`](#/api/type/SimulaSharp.Kernel.Model.ILocalReferenceWiring) seam (no `Ref`);
+3. for a cross `CRefs:` entry, builds a `RefCollection` of `new <I>Ref((I)target, targetSched, callerSched)` — capturing
+   each target's site scheduler and the referrer's — and hands it to the
+   [`IReferenceWiring.WireReference`](#/api/type/SimulaSharp.Kernel.Model.IReferenceWiring) seam;
 4. *then* calls each model's `Configure()`.
 
-```mermaid
-sequenceDiagram
-  participant Sim as Generated simulator
-  participant RC as RefCollection
-  participant W as IReferenceWiring.WireReference
-  participant A as IReference&lt;TrackerRef&gt; Trackers
-  Sim->>RC: new TrackerRef(tracker0), new TrackerRef(tracker1)
-  Sim->>W: WireReference("Trackers", refs)
-  W->>A: downcast each Ref, fill the backing FillableReference
-  Note over Sim: only now → Configure() on every model
+```yaml
+- Name: Bat
+  Type: Demo.BatteryPack
+  Refs:                       # intra-site [Reference<T>] — same site, direct
+    - Pdm: [ Sim.Eps.Pdm ]
+- Name: PdmRail
+  Type: Demo.Rail
+  CRefs:                      # cross-site [CrossReference<T>] — through a Ref
+    - Consumers: [ Sim.Adcs, Sim.Sband ]
 ```
 
-By the time your `Configure()` runs, `Trackers` is populated and ready — another reason setup belongs in `Configure`,
+By the time your `Configure()` runs, both kinds of accessor are populated — another reason setup belongs in `Configure`,
 not the constructor.
-
-## A reference call, resolved two ways
-
-Same source line, two runtimes — decided entirely by whether the target shares your site:
-
-```mermaid
-sequenceDiagram
-  autonumber
-  participant Caller as Radar (Site A)
-  participant RefS as TrackerRef
-  participant TgtSame as Tracker on Site A
-  participant TgtOther as Tracker on Site B (thread B)
-
-  rect rgba(219,234,254,0.5)
-  Note over Caller,TgtSame: same-site resolution
-  Caller->>RefS: Interrogate(SchedulerA, 42)
-  RefS->>RefS: ReferenceEquals(SchedulerA, target.Scheduler) → true
-  RefS->>TgtSame: _target.Interrogate(42)  (direct, this thread)
-  TgtSame-->>Caller: Task.FromResult(echo)  (already complete)
-  end
-
-  rect rgba(220,252,231,0.5)
-  Note over Caller,TgtOther: cross-site resolution
-  Caller->>RefS: Interrogate(SchedulerA, 42)
-  RefS->>RefS: ReferenceEquals(SchedulerA, target.Scheduler) → false
-  RefS->>TgtOther: Scheduler.InjectAsync(() => _target.Interrogate(42))
-  Note over TgtOther: runs on thread B during its next drain
-  TgtOther-->>Caller: Task completes → await resumes on A
-  end
-```
 
 ## Where to go next
 
 - **[Models & containment](#/guide/models-and-containment)** — the owning side, and why a subtree shares one thread.
-- **[The assembly](#/guide/the-assembly)** — how you declare links so the simulator wires each reference.
-- **[Services](#/guide/services)** — the *other* cross-thread partner: a shared capability on its own site, always
-  marshalled.
-- **[Choosing a topology](#/guide/choosing-a-topology)** — when a link should be a same-site reference vs a cross-site
-  one.
+- **[The assembly](#/guide/the-assembly)** — the `Refs:` / `CRefs:` blocks and how the simulator wires each reference.
+- **[Services](#/guide/services)** — the *other* cross-thread partner: a shared capability on its own site.
+- **[Choosing a topology](#/guide/choosing-a-topology)** — when a link should be an intra `[Reference]` vs a cross-site
+  `[CrossReference]`.

@@ -87,6 +87,40 @@ public double FillRate { get; set; }
 public int Node { get; set; }
 ```
 
+## Associations
+
+The **class-level** decorators that declare a model's relationships. The generator emits a read-only accessor of the
+given `Name` and wires it during assembly. See **[associations](#/guide/associations)**.
+
+| Attribute | Target | Accessor | Effect |
+|---|---|---|---|
+| [`ContainsAttribute<T>`](#/api/type/SimulaSharp.Kernel.Attributes.ContainsAttribute`1) | **class** (repeatable) | `Container<T>` | **Owns** a same-site sub-model list (`Models:` in the YAML). Direct, synchronous access; `T` may be a class or interface. |
+| [`ReferenceAttribute<T>`](#/api/type/SimulaSharp.Kernel.Attributes.ReferenceAttribute`1) | **class** (repeatable) | `IReadOnlyList<T>` | **Intra-site link** (`Refs:` in the YAML) — the target instances held directly, no `Ref`, no marshalling. Validated same-site (`SIM017`). |
+| [`CrossReferenceAttribute<T>`](#/api/type/SimulaSharp.Kernel.Attributes.CrossReferenceAttribute`1) | **class** (repeatable) | `IReference<T Ref>` | **Cross-site link** (`CRefs:` in the YAML) through a generated `<I>Ref`. `T` **must be an interface** (`SIM018`). |
+
+And the two **code-only member hints** on a cross-referenced **interface**'s members — they shape the generated `Ref`
+and are invisible to tooling that reads structure:
+
+| Attribute | Target | Ref surface | Effect |
+|---|---|---|---|
+| [`TriggerableAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.TriggerableAttribute) | `void` interface method | `void M(…)` | **Fire-and-forget** ("notify"): same-site inline, cross-site `Post`. Must return `void` (`SIM019`). |
+| [`VolatileAccessAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.VolatileAccessAttribute) | get-only interface property | `T P { get; }` | **Live gauge**: a direct synchronous read, no dispatch. Must be get-only and atomically-readable (`SIM021`). |
+
+An unmarked interface member becomes the default async request/response (`Task<T> M(…)`, or `Get`/`Set` for a property).
+
+```csharp
+public interface IPowerConsumer
+{
+    [Triggerable]    void OnAvailableChanged(double watts);  // notify — fire-and-forget
+    [VolatileAccess] double CurrentDrawW { get; }            // gauge — direct read
+    Task<string> DescribeState();                            // ask — async request/response
+}
+
+[CrossReference<IPowerConsumer>("Consumers")]                // cross-site, interface-only
+[Reference<IPdm>("Pdm")]                                     // same-site, direct
+public partial class Rail(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l);
+```
+
 ## Services
 
 The attributes that shape a **service**'s interaction surface. The generator owns both sides of each channel; see

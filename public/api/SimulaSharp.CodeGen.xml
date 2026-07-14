@@ -27,6 +27,20 @@
         <member name="M:SimulaSharp.CodeGen.KnobGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
             <inheritdoc/>
         </member>
+        <member name="T:SimulaSharp.CodeGen.LocalReferenceGenerator">
+            <summary>
+            For every model decorated with <c>[Reference&lt;T&gt;("Name")]</c> (an <b>intra-site</b> reference), emits the
+            read-only list accessor and the hidden fill seam. Because the targets share this model's SimSite, there is no Ref
+            wrapping and no marshalling: per attribute it emits a <c>private readonly List&lt;T&gt; __local_Name</c> and a
+            <c>public IReadOnlyList&lt;T&gt; Name =&gt; __local_Name;</c> accessor (getters only). It implements
+            <c>ILocalReferenceWiring.WireLocalReference</c> explicitly — the generated simulator calls it after construction
+            with the target <c>IModel</c> instances themselves, which the seam casts to the reference's element type and
+            appends. (Contrast <see cref="T:SimulaSharp.CodeGen.ReferenceGenerator"/>, the cross-site variant over guarded Refs.)
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.LocalReferenceGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
+            <inheritdoc/>
+        </member>
         <member name="T:SimulaSharp.CodeGen.ParameterGenerator">
             <summary>
             For every partial model/service with <c>[Parameter]</c>-marked members, emits two things into the partial:
@@ -95,40 +109,40 @@
         </member>
         <member name="T:SimulaSharp.CodeGen.RefGenerator">
             <summary>
-            Emits the guarded reference accessors. For <b>every</b> concrete model that implements
-            <c>SimulaSharp.Kernel.Model.IModel</c> it emits a <c>&lt;Model&gt;Ref</c> class wrapping an instance and exposing
-            one async accessor per public member (methods verbatim; properties/fields as <c>Get&lt;Name&gt;</c>/
-            <c>Set&lt;Name&gt;</c>). Every accessor takes the caller's scheduler: same-site as the target it runs directly and
-            completes synchronously, otherwise it is marshalled onto the target's site via <c>InjectAsync</c> and awaited.
-            Class Refs are eager (they exist for scripting/live invocation, not just for wired references).
-            <para>
-            When an <b>interface</b> is used as a <c>[References&lt;I&gt;]</c> target, it additionally emits a companion
-            <c>&lt;I&gt;Ref</c> <b>interface</b> declaring the same accessor signatures, and makes every model Ref whose model
-            implements <c>I</c> implement <c>&lt;I&gt;Ref</c> — so an <c>IReference&lt;I Ref&gt;</c> can hold the concrete Refs
-            of any implementation polymorphically.
-            </para>
+            Emits the guarded cross-site reference wrappers. For each <b>interface</b> <c>I</c> used as a
+            <c>[CrossReference&lt;I&gt;]</c> target it emits a single <c>sealed class &lt;I&gt;Ref : IModelRef</c> that wraps an
+            <c>I</c> target and the two schedulers captured at construction (the target's and the caller's), then routes each of
+            <c>I</c>'s members by a three-tier taxonomy:
+            <list type="bullet">
+              <item><b><c>[Triggerable]</c></b> <c>void</c> methods → fire-and-forget: same-site inline, cross-site <c>Post</c>.</item>
+              <item><b><c>[VolatileAccess]</c></b> get-only properties → a plain synchronous getter (<c>=&gt; _target.P</c>), no dispatch.</item>
+              <item>everything else → async request/response: same-site inline + completed <c>Task</c>, cross-site <c>InjectAsync</c>/<c>InjectVoidAsync</c>.</item>
+            </list>
+            Because a cross-reference target is always the interface, there is exactly one Ref per interface — no per-model Ref
+            classes and no companion Ref interfaces (the target opacity makes them unnecessary).
             </summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.RefGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
             <inheritdoc/>
         </member>
         <member name="M:SimulaSharp.CodeGen.RefGenerator.InterfaceTargets(Microsoft.CodeAnalysis.GeneratorAttributeSyntaxContext)">
-            <summary>The interface type arguments of the <c>[References&lt;I&gt;]</c> attributes on one class.</summary>
+            <summary>The interface type arguments of the <c>[CrossReference&lt;I&gt;]</c> attributes on one class.</summary>
         </member>
-        <member name="M:SimulaSharp.CodeGen.RefGenerator.Model(Microsoft.CodeAnalysis.GeneratorSyntaxContext)">
-            <summary>The concrete, non-generic <c>IModel</c> class declared by this node, or null.</summary>
-        </member>
-        <member name="M:SimulaSharp.CodeGen.RefGenerator.EmitSignature(System.Text.StringBuilder,Microsoft.CodeAnalysis.ISymbol,System.Collections.Generic.HashSet{System.String})">
-            <summary>Appends an accessor <em>signature</em> (declaration only) for one interface member.</summary>
+        <member name="M:SimulaSharp.CodeGen.RefGenerator.IsAtomicallyReadable(Microsoft.CodeAnalysis.ITypeSymbol)">
+            <summary>Whether a value of <paramref name="type"/> can be read atomically across threads (no tearing): a
+            reference type, an enum, or a word-size primitive. A non-primitive struct can tear under a bare read.</summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.RefGenerator.EmitValue(System.Text.StringBuilder,System.String,System.String,System.String,System.String)">
-            <summary>Emits a value-returning accessor: same-site direct, else marshalled via InjectAsync.</summary>
+            <summary>A value-returning request/response accessor: same-site inline + completed Task, else <c>InjectAsync</c>.</summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.RefGenerator.EmitVoid(System.Text.StringBuilder,System.String,System.String,System.String)">
-            <summary>Emits a void accessor: same-site direct, else marshalled via InjectVoidAsync.</summary>
+            <summary>A void request/response accessor: same-site inline + completed Task, else <c>InjectVoidAsync</c>.</summary>
         </member>
-        <member name="M:SimulaSharp.CodeGen.RefGenerator.Parameters(System.Collections.Generic.IReadOnlyList{Microsoft.CodeAnalysis.IParameterSymbol})">
-            <summary>Renders parameter declarations (with a leading comma) and the matching argument list.</summary>
+        <member name="M:SimulaSharp.CodeGen.RefGenerator.EmitTrigger(System.Text.StringBuilder,System.String,System.String,System.String)">
+            <summary>A fire-and-forget accessor: same-site inline call, else <c>Post</c> onto the target's dispatcher.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.RefGenerator.Params(System.Collections.Generic.IReadOnlyList{Microsoft.CodeAnalysis.IParameterSymbol})">
+            <summary>Renders parameter declarations (no leading comma) and the matching argument list.</summary>
         </member>
         <member name="T:SimulaSharp.CodeGen.ServiceGenerator">
             <summary>
@@ -189,9 +203,10 @@
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.DerivesFrom(Microsoft.CodeAnalysis.INamedTypeSymbol,Microsoft.CodeAnalysis.INamedTypeSymbol)">
             <summary>True if <paramref name="type"/> (or an ancestor) is <paramref name="baseType"/>. False if either is null.</summary>
         </member>
-        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Validator.ReferenceTarget(Microsoft.CodeAnalysis.INamedTypeSymbol,System.String)">
-            <summary>The target type <c>T</c> of the <c>[References&lt;T&gt;("name")]</c> reference declared on
-            <paramref name="type"/> (walking base types), or null when the model declares no such reference.</summary>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Validator.ReferenceTarget(Microsoft.CodeAnalysis.INamedTypeSymbol,System.String,Microsoft.CodeAnalysis.INamedTypeSymbol)">
+            <summary>The target type <c>T</c> of the reference named <paramref name="name"/> declared on
+            <paramref name="type"/> (walking base types) via <paramref name="refAttr"/> (the cross- or intra-site
+            reference attribute), or null when the model declares no such reference of that kind.</summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Validator.ContainerElement(Microsoft.CodeAnalysis.INamedTypeSymbol,System.String)">
             <summary>The element type <c>T</c> of the <c>[Contains&lt;T&gt;("name")]</c> container declared on
@@ -203,6 +218,11 @@
             service): the member exists and is <c>[ServiceRef]</c>, the named service is known, and it is
             assignable to the member. Shared by model deps and service→service deps.
             </summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.EmitCtx.CrossReferenceElementType(System.String,System.String)">
+            <summary>The fully-qualified interface <c>T</c> of the <c>[CrossReference&lt;T&gt;("name")]</c> declared on
+            <paramref name="parentType"/> (walking base types), or "" if the reference is not a cross-reference — in
+            which case it is an intra-site <c>[Reference&lt;T&gt;]</c> (validation has guaranteed one of the two exists).</summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.EmitCtx.ContainerElementType(System.String,System.String)">
             <summary>The fully-qualified element type <c>T</c> of the <c>[Contains&lt;T&gt;("name")]</c> container
