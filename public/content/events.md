@@ -46,9 +46,9 @@ fire — the split is deliberate.)
 
 ### `[EventHandler]` — subscribe (consumer)
 
-[`[EventHandler]`](#/api/type/SimulaSharp.Kernel.Attributes.EventHandlerAttribute) marks a model **method** as a
-subscription target. The assembly's `Subscriptions` block binds it to a named event; the simulator registers it during
-wiring, and the method thereafter runs on **this model's own site** whenever the event fires.
+[`[EventHandler]`](#/api/type/SimulaSharp.Kernel.Attributes.EventHandlerAttribute) marks a model **or service** **method**
+as a subscription target. The assembly's `Subscriptions` block binds it to a named event; the simulator registers it
+during wiring, and the method thereafter runs on **the subscriber's own site** whenever the event fires.
 
 The method must be `void` and take **either no parameters** (for an argless event) **or a single parameter** of the
 event's payload type:
@@ -88,19 +88,19 @@ All live in **`SimulaSharp.Kernel.Events`**. They come in an argless family and 
 | Type | Role |
 |---|---|
 | [`ISimEventInvocator`](#/api/type/SimulaSharp.Kernel.Events.ISimEventInvocator) · [`ISimEventInvocator<T>`](#/api/type/SimulaSharp.Kernel.Events.ISimEventInvocator`1) | The **producer** capability — `Trigger()` / `Trigger(T arg)`, nothing else. What an `[EventReference]` is typed as. |
-| [`ISimEvent<TSub>`](#/api/type/SimulaSharp.Kernel.Events.ISimEvent`1) · [`ISimEvent<TSub, T>`](#/api/type/SimulaSharp.Kernel.Events.ISimEvent`2) | The **full event** — the producer capability plus `Register(TSub subscriber, IScheduler subScheduler, Action handler)` / `Register(TSub subscriber, IScheduler subScheduler, Action<T> handler)`. `TSub : IModel` is the subscriber-identity type a custom event may key on for routing; `subScheduler` is where its handler runs (the stock event posts there and ignores the identity). |
-| [`SimEvent`](#/api/type/SimulaSharp.Kernel.Events.SimEvent) · [`SimEvent<T>`](#/api/type/SimulaSharp.Kernel.Events.SimEvent`1) | The **stock, logic-free** events (`ISimEvent<IModel>` / `ISimEvent<IModel, T>`) — the YAML default. Uniform delivery to every subscriber; they ignore `TSub`. |
+| [`ISimEvent<TSub>`](#/api/type/SimulaSharp.Kernel.Events.ISimEvent`1) · [`ISimEvent<TSub, T>`](#/api/type/SimulaSharp.Kernel.Events.ISimEvent`2) | The **full event** — the producer capability plus `Register(TSub subscriber, IDispatcher subDispatcher, Action handler)` / `Register(TSub subscriber, IDispatcher subDispatcher, Action<T> handler)`. `TSub` (unconstrained) is the subscriber-identity type a custom event may key on for routing; `subDispatcher` is where its handler runs (the stock event posts there and ignores the identity). A subscriber may be a model or a service. |
+| [`SimEvent`](#/api/type/SimulaSharp.Kernel.Events.SimEvent) · [`SimEvent<T>`](#/api/type/SimulaSharp.Kernel.Events.SimEvent`1) | The **stock, logic-free** events (`ISimEvent<object>` / `ISimEvent<object, T>`) — the YAML default. Uniform delivery to every subscriber; they ignore `TSub`. |
 
-The `TSub` type parameter matters only to a **custom** event (below). The stock `SimEvent` keys on `IModel`, so it
-accepts every model uniformly.
+The `TSub` type parameter matters only to a **custom** event (below). The stock `SimEvent` uses `object`, so it accepts
+every subscriber — model or service — uniformly.
 
 ## Wiring it in the assembly
 
 A global event is declared once, under a top-level **`Events:`** block (a sibling of `Services:` under `Simulator:`),
 then wired to producers and consumers per model instance:
 
-- a model instance's **`Triggers:`** block binds an `[EventReference]` producer member to an event;
-- a model instance's **`Subscriptions:`** block binds an `[EventHandler]` consumer method to an event.
+- a model **or service** instance's **`Triggers:`** block binds an `[EventReference]` producer member to an event;
+- a model **or service** instance's **`Subscriptions:`** block binds an `[EventHandler]` consumer method to an event.
 
 ```yaml
 Simulator:
@@ -200,13 +200,13 @@ You reach for a **custom** event only when the *routing* itself carries logic �
 // A router keyed on the subscribing node — delivers a transfer only to the addressed node.
 public sealed class RoutingEvent : ISimEvent<IBusNode, TransferStruct>
 {
-    public void Register(IBusNode subscriber, IScheduler subScheduler, Action<TransferStruct> handler) { /* index by node id + scheduler */ }
+    public void Register(IBusNode subscriber, IDispatcher subDispatcher, Action<TransferStruct> handler) { /* index by node id + dispatcher */ }
     public void Trigger(TransferStruct t) { /* route to the addressed node(s) only */ }
 }
 ```
 
 Declare it with `Type: Demo.RoutingEvent` in the `Events:` block. Because its `TSub` is `IBusNode` (not the stock
-`IModel`), every subscribing model **must** be an `IBusNode` — the generator enforces it ([SIM026](#diagnostics-sim023sim028)),
+`object`), every subscriber **must** be an `IBusNode` — the generator enforces it ([SIM026](#diagnostics-sim023sim028)),
 and a `Type` that doesn't implement `ISimEvent<…>` or disagrees with the declared `ArgType` is [SIM028](#diagnostics-sim023sim028).
 
 ## Diagnostics — SIM023–SIM028
@@ -219,7 +219,7 @@ is not emitted — fix the reported id and rebuild.
 | **SIM023** | Unknown event. | A `Subscriptions`/`Triggers` entry names an event not declared under `Events:` — add it or correct the name. |
 | **SIM024** | Invalid event handler. | The `Subscriptions` method is missing, not `[EventHandler]`, or not `void` — mark a `void` method with `[EventHandler]`. |
 | **SIM025** | Handler signature mismatch. | Wrong arity/payload — an argless event needs a 0-parameter handler; a typed event needs a single parameter the payload is assignable to. |
-| **SIM026** | Wrong subscriber type. | The subscribing model isn't assignable to the event's `TSub` — the stock event accepts all (`IModel`); a custom event's `TSub` may be narrower. |
+| **SIM026** | Wrong subscriber type. | The subscriber isn't assignable to the event's `TSub` — the stock event accepts all (`object`); a custom event's `TSub` may be narrower. |
 | **SIM027** | Invalid event reference. | The `Triggers` member isn't `[EventReference]`, or isn't typed as the matching `ISimEventInvocator` / `ISimEventInvocator<T>`. |
 | **SIM028** | Invalid event type. | A custom `Type` doesn't implement `ISimEvent<…>`, or disagrees with the declared `ArgType` — align the type and its argument. |
 

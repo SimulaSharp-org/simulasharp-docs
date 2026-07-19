@@ -72,11 +72,14 @@ unique and are what `Refs` target.
 | `Type` | **yes** | — | Fully-qualified type; must implement `IService` and have a `(IClock, ILogger)` ctor. |
 | `Config` | no | *(none)* | Map of `[Parameter]` key → scalar for the service (optional; an omitted key uses the parameter's attribute default). |
 | `Deps` | no | *(none)* | **Service→service deps.** Same shape as a model's `Deps` — a list of `{ <serviceRefMember>: serviceName }` binding a `[ServiceRef]` member to another service. Cycles are allowed (A→B and B→A): every service is constructed before any dep is bound. |
+| `Triggers` | no | *(none)* | **Event producers.** Same shape as a model's `Triggers` — a service can hold an `[EventReference]` and fire a global event. |
+| `Subscriptions` | no | *(none)* | **Event consumers.** Same shape as a model's `Subscriptions` — a service can carry an `[EventHandler]`; its handler runs on the service's own site. |
 
 ## `Events[]`
 
 Each entry declares one **global event** — a scheduler-less, ownerless, multi-producer pub/sub primitive. Producers are
-wired via a model's `Triggers`, consumers via a model's `Subscriptions`. See **[global events](#/guide/events)**.
+wired via a model's or service's `Triggers`, consumers via a model's or service's `Subscriptions`. See
+**[global events](#/guide/events)**.
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
@@ -145,7 +148,7 @@ so there is no cascade — fix the reported id and rebuild.
 | **SIM023** | Unknown event. | A `Subscriptions`/`Triggers` entry names an event not declared under `Events:` — add it or correct the name. |
 | **SIM024** | Invalid event handler. | The `Subscriptions` method is missing, not `[EventHandler]`, or not `void` — mark a `void` method with `[EventHandler]`. |
 | **SIM025** | Handler signature mismatch. | Wrong arity/payload — an argless event needs a 0-parameter handler; a typed event needs a single parameter the payload is assignable to. |
-| **SIM026** | Wrong subscriber type. | The subscribing model isn't assignable to the event's `TSub` — the stock event accepts all (`IModel`); a custom event's `TSub` may be narrower. |
+| **SIM026** | Wrong subscriber type. | The subscriber isn't assignable to the event's `TSub` — the stock event accepts all (`object`); a custom event's `TSub` may be narrower. |
 | **SIM027** | Invalid event reference. | The `Triggers` member isn't `[EventReference]`, or isn't typed as the matching `ISimEventInvocator` / `ISimEventInvocator<T>`. |
 | **SIM028** | Invalid event type. | A custom `Type` doesn't implement `ISimEvent<…>`, or disagrees with the declared `ArgType` — align the type and its argument. |
 

@@ -84,15 +84,15 @@
         </member>
         <member name="T:SimulaSharp.Kernel.Attributes.EventHandlerAttribute">
             <summary>
-            Marks a model method as a global-event subscription target. The method must be <c>void</c> and take either no
-            parameters (for an argless event) or a single parameter of the event's payload type. The assembly's
+            Marks a model or service method as a global-event subscription target. The method must be <c>void</c> and take
+            either no parameters (for an argless event) or a single parameter of the event's payload type. The assembly's
             <c>Subscriptions</c> block binds a named event to such a method; the simulator registers it at assembly time so the
-            handler runs on the model's own site whenever the event fires.
+            handler runs on the subscriber's own site whenever the event fires.
             </summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Attributes.EventReferenceAttribute">
             <summary>
-            Marks a model property or field as a producer handle to a global event. The member must be typed as an
+            Marks a model or service property or field as a producer handle to a global event. The member must be typed as an
             <see cref="T:SimulaSharp.Kernel.Events.ISimEventInvocator"/> (argless) or <see cref="T:SimulaSharp.Kernel.Events.ISimEventInvocator`1"/> (with payload). The assembly's
             <c>Triggers</c> block binds a named event to the member; the simulator fills it with the shared event instance so the
             model can <c>Trigger</c> it. The invocator surface is trigger-only — a producer cannot register subscribers, which
@@ -547,25 +547,26 @@
             owns its own synchronization.
             </para>
             </summary>
-            <typeparam name="TSub">The subscriber identity a custom event may key on (routing); constrained to <see cref="T:SimulaSharp.Kernel.Model.IModel"/>.</typeparam>
+            <typeparam name="TSub">The subscriber identity a custom event may key on (routing) — unconstrained; a subscriber
+            may be a model or a service. The stock <see cref="T:SimulaSharp.Kernel.Events.SimEvent"/> uses <c>object</c> and ignores it.</typeparam>
         </member>
-        <member name="M:SimulaSharp.Kernel.Events.ISimEvent`1.Register(`0,SimulaSharp.Kernel.Services.IScheduler,System.Action)">
+        <member name="M:SimulaSharp.Kernel.Events.ISimEvent`1.Register(`0,SimulaSharp.Kernel.Services.IDispatcher,System.Action)">
             <summary>Registers <paramref name="handler"/> for <paramref name="subscriber"/>, to be posted onto
-            <paramref name="subScheduler"/> when the event fires. The identity and the target scheduler are separate:
-            the stock event ignores <paramref name="subscriber"/> and posts to <paramref name="subScheduler"/>, while a
-            routing event may key on the identity and choose a different scheduler. Called by the simulator during assembly.</summary>
+            <paramref name="subDispatcher"/> when the event fires. Identity and dispatch target are separate: the stock event
+            ignores <paramref name="subscriber"/> and posts to <paramref name="subDispatcher"/> (the subscriber's own site),
+            while a routing event may key on the identity and choose a different dispatcher. Called at assembly time.</summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Events.ISimEvent`2">
             <summary>
             A global, scheduler-less pub/sub event carrying a payload of type <typeparamref name="T"/>. See
             <see cref="T:SimulaSharp.Kernel.Events.ISimEvent`1"/>.
             </summary>
-            <typeparam name="TSub">The subscriber identity a custom event may key on (routing); constrained to <see cref="T:SimulaSharp.Kernel.Model.IModel"/>.</typeparam>
+            <typeparam name="TSub">The subscriber identity a custom event may key on (routing) — unconstrained.</typeparam>
             <typeparam name="T">The event payload type.</typeparam>
         </member>
-        <member name="M:SimulaSharp.Kernel.Events.ISimEvent`2.Register(`0,SimulaSharp.Kernel.Services.IScheduler,System.Action{`1})">
+        <member name="M:SimulaSharp.Kernel.Events.ISimEvent`2.Register(`0,SimulaSharp.Kernel.Services.IDispatcher,System.Action{`1})">
             <summary>Registers <paramref name="handler"/> for <paramref name="subscriber"/>, to be posted (with the payload)
-            onto <paramref name="subScheduler"/> when the event fires. See <see cref="M:SimulaSharp.Kernel.Events.ISimEvent`1.Register(`0,SimulaSharp.Kernel.Services.IScheduler,System.Action)"/>.</summary>
+            onto <paramref name="subDispatcher"/> when the event fires. See <see cref="M:SimulaSharp.Kernel.Events.ISimEvent`1.Register(`0,SimulaSharp.Kernel.Services.IDispatcher,System.Action)"/>.</summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Events.ISimEventInvocator">
             <summary>
@@ -590,14 +591,14 @@
         </member>
         <member name="T:SimulaSharp.Kernel.Events.SimEvent">
             <summary>
-            The stock, logic-free global event (payload-less). Registration records each handler against the scheduler it is to
-            run on; a <see cref="M:SimulaSharp.Kernel.Events.SimEvent.Trigger"/> posts every handler onto that scheduler. The <c>subscriber</c> identity itself is
-            unused — it is accepted only for uniformity with routing events. Because every <see cref="M:SimulaSharp.Kernel.Events.SimEvent.Register(SimulaSharp.Kernel.Model.IModel,SimulaSharp.Kernel.Services.IScheduler,System.Action)"/> runs
+            The stock, logic-free global event (payload-less). Registration records each handler against the dispatcher it is to
+            run on; a <see cref="M:SimulaSharp.Kernel.Events.SimEvent.Trigger"/> posts every handler onto that dispatcher. The <c>subscriber</c> identity itself is
+            unused — it is accepted only for uniformity with routing events. Because every <see cref="M:SimulaSharp.Kernel.Events.SimEvent.Register(System.Object,SimulaSharp.Kernel.Services.IDispatcher,System.Action)"/> runs
             synchronously at assembly time (before the run starts) and triggering only reads the subscriber list, no locking is
             needed.
             </summary>
         </member>
-        <member name="M:SimulaSharp.Kernel.Events.SimEvent.Register(SimulaSharp.Kernel.Model.IModel,SimulaSharp.Kernel.Services.IScheduler,System.Action)">
+        <member name="M:SimulaSharp.Kernel.Events.SimEvent.Register(System.Object,SimulaSharp.Kernel.Services.IDispatcher,System.Action)">
             <inheritdoc/>
         </member>
         <member name="M:SimulaSharp.Kernel.Events.SimEvent.Trigger">
@@ -609,7 +610,7 @@
             </summary>
             <typeparam name="T">The event payload type.</typeparam>
         </member>
-        <member name="M:SimulaSharp.Kernel.Events.SimEvent`1.Register(SimulaSharp.Kernel.Model.IModel,SimulaSharp.Kernel.Services.IScheduler,System.Action{`0})">
+        <member name="M:SimulaSharp.Kernel.Events.SimEvent`1.Register(System.Object,SimulaSharp.Kernel.Services.IDispatcher,System.Action{`0})">
             <inheritdoc/>
         </member>
         <member name="M:SimulaSharp.Kernel.Events.SimEvent`1.Trigger(`0)">

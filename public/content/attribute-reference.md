@@ -152,12 +152,12 @@ For how these attributes appear in the assembly (the `Services`, `Deps`, `Config
 
 ## Global events
 
-The member-level attributes that plug a model into a **global event** — a scheduler-less, ownerless, multi-producer
+The member-level attributes that plug a model or service into a **global event** — a scheduler-less, ownerless, multi-producer
 pub/sub primitive. The generated simulator wires both sides at assembly time; see **[global events](#/guide/events)**.
 
 | Attribute | Target | Parameters | Effect |
 |---|---|---|---|
-| [`EventHandlerAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.EventHandlerAttribute) | **method** | *(none)* | Marks a **subscription target** (consumer). Must be `void` with **0 parameters** (argless event) or a **single parameter** of the payload type. The assembly's `Subscriptions` block binds it by event name; it runs on **this model's own site** when the event fires. |
+| [`EventHandlerAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.EventHandlerAttribute) | **method** | *(none)* | Marks a **subscription target** (consumer). Must be `void` with **0 parameters** (argless event) or a **single parameter** of the payload type. The assembly's `Subscriptions` block binds it by event name; it runs on **the subscriber's own site** when the event fires. |
 | [`EventReferenceAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.EventReferenceAttribute) | settable field/property typed [`ISimEventInvocator`](#/api/type/SimulaSharp.Kernel.Events.ISimEventInvocator) / [`ISimEventInvocator<T>`](#/api/type/SimulaSharp.Kernel.Events.ISimEventInvocator`1) | *(none)* | Marks a **producer handle** (trigger-only — producers can't subscribe). The assembly's `Triggers` block binds it by event name; the simulator fills it with the shared event. Fire it with `Trigger()` / `Trigger(arg)`. |
 
 ```csharp
