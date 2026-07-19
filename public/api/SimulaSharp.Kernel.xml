@@ -547,23 +547,25 @@
             owns its own synchronization.
             </para>
             </summary>
-            <typeparam name="TSub">The subscriber type; constrained to <see cref="T:SimulaSharp.Kernel.Model.IModel"/> so it carries its own scheduler.</typeparam>
+            <typeparam name="TSub">The subscriber identity a custom event may key on (routing); constrained to <see cref="T:SimulaSharp.Kernel.Model.IModel"/>.</typeparam>
         </member>
-        <member name="M:SimulaSharp.Kernel.Events.ISimEvent`1.Register(`0,System.Action)">
-            <summary>Registers <paramref name="handler"/> on behalf of <paramref name="subscriber"/>; on trigger the handler
-            is posted onto the subscriber's own site. Called by the simulator during assembly, never at run time.</summary>
+        <member name="M:SimulaSharp.Kernel.Events.ISimEvent`1.Register(`0,SimulaSharp.Kernel.Services.IScheduler,System.Action)">
+            <summary>Registers <paramref name="handler"/> for <paramref name="subscriber"/>, to be posted onto
+            <paramref name="subScheduler"/> when the event fires. The identity and the target scheduler are separate:
+            the stock event ignores <paramref name="subscriber"/> and posts to <paramref name="subScheduler"/>, while a
+            routing event may key on the identity and choose a different scheduler. Called by the simulator during assembly.</summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Events.ISimEvent`2">
             <summary>
             A global, scheduler-less pub/sub event carrying a payload of type <typeparamref name="T"/>. See
             <see cref="T:SimulaSharp.Kernel.Events.ISimEvent`1"/>.
             </summary>
-            <typeparam name="TSub">The subscriber type; constrained to <see cref="T:SimulaSharp.Kernel.Model.IModel"/> so it carries its own scheduler.</typeparam>
+            <typeparam name="TSub">The subscriber identity a custom event may key on (routing); constrained to <see cref="T:SimulaSharp.Kernel.Model.IModel"/>.</typeparam>
             <typeparam name="T">The event payload type.</typeparam>
         </member>
-        <member name="M:SimulaSharp.Kernel.Events.ISimEvent`2.Register(`0,System.Action{`1})">
-            <summary>Registers <paramref name="handler"/> on behalf of <paramref name="subscriber"/>; on trigger the handler
-            is posted, with the triggered payload, onto the subscriber's own site.</summary>
+        <member name="M:SimulaSharp.Kernel.Events.ISimEvent`2.Register(`0,SimulaSharp.Kernel.Services.IScheduler,System.Action{`1})">
+            <summary>Registers <paramref name="handler"/> for <paramref name="subscriber"/>, to be posted (with the payload)
+            onto <paramref name="subScheduler"/> when the event fires. See <see cref="M:SimulaSharp.Kernel.Events.ISimEvent`1.Register(`0,SimulaSharp.Kernel.Services.IScheduler,System.Action)"/>.</summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Events.ISimEventInvocator">
             <summary>
@@ -588,14 +590,14 @@
         </member>
         <member name="T:SimulaSharp.Kernel.Events.SimEvent">
             <summary>
-            The stock, logic-free global event (payload-less). Registration captures each subscriber's scheduler; a
-            <see cref="M:SimulaSharp.Kernel.Events.SimEvent.Trigger"/> posts every handler onto its subscriber's own site. The subscriber identity itself is
-            unused — it is accepted only for uniformity with routing events. Because every <see cref="M:SimulaSharp.Kernel.Events.SimEvent.Register(SimulaSharp.Kernel.Model.IModel,System.Action)"/> runs
+            The stock, logic-free global event (payload-less). Registration records each handler against the scheduler it is to
+            run on; a <see cref="M:SimulaSharp.Kernel.Events.SimEvent.Trigger"/> posts every handler onto that scheduler. The <c>subscriber</c> identity itself is
+            unused — it is accepted only for uniformity with routing events. Because every <see cref="M:SimulaSharp.Kernel.Events.SimEvent.Register(SimulaSharp.Kernel.Model.IModel,SimulaSharp.Kernel.Services.IScheduler,System.Action)"/> runs
             synchronously at assembly time (before the run starts) and triggering only reads the subscriber list, no locking is
             needed.
             </summary>
         </member>
-        <member name="M:SimulaSharp.Kernel.Events.SimEvent.Register(SimulaSharp.Kernel.Model.IModel,System.Action)">
+        <member name="M:SimulaSharp.Kernel.Events.SimEvent.Register(SimulaSharp.Kernel.Model.IModel,SimulaSharp.Kernel.Services.IScheduler,System.Action)">
             <inheritdoc/>
         </member>
         <member name="M:SimulaSharp.Kernel.Events.SimEvent.Trigger">
@@ -607,7 +609,7 @@
             </summary>
             <typeparam name="T">The event payload type.</typeparam>
         </member>
-        <member name="M:SimulaSharp.Kernel.Events.SimEvent`1.Register(SimulaSharp.Kernel.Model.IModel,System.Action{`0})">
+        <member name="M:SimulaSharp.Kernel.Events.SimEvent`1.Register(SimulaSharp.Kernel.Model.IModel,SimulaSharp.Kernel.Services.IScheduler,System.Action{`0})">
             <inheritdoc/>
         </member>
         <member name="M:SimulaSharp.Kernel.Events.SimEvent`1.Trigger(`0)">
@@ -1469,6 +1471,10 @@
         <member name="F:SimulaSharp.Kernel.Services.EventQueue.Slot.Version">
             <summary>Bumped when the slot is freed; guards a stale <see cref="M:SimulaSharp.Kernel.Services.EventQueue.ReArm(System.Int32,System.Int32,System.Int64)"/> against a reused slot.</summary>
         </member>
+        <member name="F:SimulaSharp.Kernel.Services.EventQueue._logger">
+            <summary>The owning site's error channel: a scheduled entry that throws is logged here and dropped. Shared with
+            the <see cref="T:SimulaSharp.Kernel.Services.SimSite"/>. Null only for tests that construct a bare queue.</summary>
+        </member>
         <member name="F:SimulaSharp.Kernel.Services.EventQueue._dueBatch">
             <summary>
             Reusable buffer for the slots due in the current <see cref="M:SimulaSharp.Kernel.Services.EventQueue.ProcessDue(System.Int64)"/> pass.
@@ -1484,8 +1490,10 @@
             task completes; set it before running awaiting coroutines.
             </summary>
         </member>
-        <member name="M:SimulaSharp.Kernel.Services.EventQueue.#ctor(System.Int32)">
+        <member name="M:SimulaSharp.Kernel.Services.EventQueue.#ctor(System.Int32,SimulaSharp.Kernel.Logging.ILogger)">
             <summary>Creates a queue that can hold at most <paramref name="maxCapacity"/> pending entries.</summary>
+            <param name="maxCapacity">Maximum pending entries.</param>
+            <param name="logger">The owning site's error channel; a throwing entry is logged here instead of being swallowed.</param>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.EventQueue.AddEvent(System.Action,System.Int64)">
             <summary>Schedules a one-shot action for <paramref name="dueTimeUs"/>.</summary>
@@ -2015,6 +2023,11 @@
             <summary>Backstop cap (ms) on a park's timed wait. The clock delivers the real, on-time wake; this only
             bounds how long an idle site sleeps before it re-checks state, so nothing ever sleeps blind.</summary>
         </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimSite._logger">
+            <summary>The site's error channel — exceptions escaping posted work (event handlers, service-event callbacks,
+            marshalled ref calls) or a scheduled entry are isolated here and logged, rather than killing the site thread.
+            Shared with the <see cref="T:SimulaSharp.Kernel.Services.EventQueue"/>. Null only for tests that construct a bare site.</summary>
+        </member>
         <member name="F:SimulaSharp.Kernel.Services.SimSite._inbox">
             <summary>Cross-thread work destined for this site's thread (lock-free).</summary>
         </member>
@@ -2033,7 +2046,7 @@
         <member name="P:SimulaSharp.Kernel.Services.SimSite.Name">
             <summary>Human-readable site name (used for the thread name and diagnostics).</summary>
         </member>
-        <member name="M:SimulaSharp.Kernel.Services.SimSite.#ctor(System.String,SimulaSharp.Kernel.Services.IClock,System.Int32)">
+        <member name="M:SimulaSharp.Kernel.Services.SimSite.#ctor(System.String,SimulaSharp.Kernel.Services.IClock,System.Int32,SimulaSharp.Kernel.Logging.ILogger)">
             <summary>
             Creates a site bound to <paramref name="clock"/>. The site does no work until
             <see cref="M:SimulaSharp.Kernel.Services.SimSite.Start"/> is called and the clock is running.
@@ -2041,6 +2054,8 @@
             <param name="name">Diagnostic name.</param>
             <param name="clock">The shared simulation clock.</param>
             <param name="maxEvents">Capacity of the site's event queue.</param>
+            <param name="logger">The site's error channel; a posted-work or scheduled-entry exception is logged here
+            instead of taking down the thread. Shared with the site's <see cref="T:SimulaSharp.Kernel.Services.EventQueue"/>.</param>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.SimSite.Start">
             <summary>
@@ -2166,7 +2181,8 @@
             <summary>Hands the channel the discovered knobs and subscribes it to each knob's changes.</summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.CreateSite(System.String,System.Int32)">
-            <summary>Creates and registers a root SimSite (one per assembly <c>Sites[]</c> entry).</summary>
+            <summary>Creates and registers a root SimSite (one per assembly <c>Sites[]</c> entry). The site's error channel
+            (shared with its event queue) logs under the <c>SimulatorThreads.&lt;name&gt;</c> issuer.</summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.CreateLogger(System.String)">
             <summary>Creates a component-scoped logger over this simulation's clock and sink fan-out.</summary>

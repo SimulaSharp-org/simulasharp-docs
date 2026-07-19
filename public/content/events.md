@@ -88,7 +88,7 @@ All live in **`SimulaSharp.Kernel.Events`**. They come in an argless family and 
 | Type | Role |
 |---|---|
 | [`ISimEventInvocator`](#/api/type/SimulaSharp.Kernel.Events.ISimEventInvocator) · [`ISimEventInvocator<T>`](#/api/type/SimulaSharp.Kernel.Events.ISimEventInvocator`1) | The **producer** capability — `Trigger()` / `Trigger(T arg)`, nothing else. What an `[EventReference]` is typed as. |
-| [`ISimEvent<TSub>`](#/api/type/SimulaSharp.Kernel.Events.ISimEvent`1) · [`ISimEvent<TSub, T>`](#/api/type/SimulaSharp.Kernel.Events.ISimEvent`2) | The **full event** — the producer capability plus `Register(TSub subscriber, Action handler)` / `Register(TSub subscriber, Action<T> handler)`. `TSub : IModel` is the subscriber-identity type a custom event may key on for routing. |
+| [`ISimEvent<TSub>`](#/api/type/SimulaSharp.Kernel.Events.ISimEvent`1) · [`ISimEvent<TSub, T>`](#/api/type/SimulaSharp.Kernel.Events.ISimEvent`2) | The **full event** — the producer capability plus `Register(TSub subscriber, IScheduler subScheduler, Action handler)` / `Register(TSub subscriber, IScheduler subScheduler, Action<T> handler)`. `TSub : IModel` is the subscriber-identity type a custom event may key on for routing; `subScheduler` is where its handler runs (the stock event posts there and ignores the identity). |
 | [`SimEvent`](#/api/type/SimulaSharp.Kernel.Events.SimEvent) · [`SimEvent<T>`](#/api/type/SimulaSharp.Kernel.Events.SimEvent`1) | The **stock, logic-free** events (`ISimEvent<IModel>` / `ISimEvent<IModel, T>`) — the YAML default. Uniform delivery to every subscriber; they ignore `TSub`. |
 
 The `TSub` type parameter matters only to a **custom** event (below). The stock `SimEvent` keys on `IModel`, so it
@@ -200,7 +200,7 @@ You reach for a **custom** event only when the *routing* itself carries logic �
 // A router keyed on the subscribing node — delivers a transfer only to the addressed node.
 public sealed class RoutingEvent : ISimEvent<IBusNode, TransferStruct>
 {
-    public void Register(IBusNode subscriber, Action<TransferStruct> handler) { /* index by node id */ }
+    public void Register(IBusNode subscriber, IScheduler subScheduler, Action<TransferStruct> handler) { /* index by node id + scheduler */ }
     public void Trigger(TransferStruct t) { /* route to the addressed node(s) only */ }
 }
 ```
