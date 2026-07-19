@@ -37,7 +37,7 @@ is a library.)
 
 ```xml
 <ItemGroup>
-    <PackageReference Include="SimulaSharp" Version="0.3.0" />
+    <PackageReference Include="SimulaSharp" Version="0.4.0" />
 </ItemGroup>
 ```
 
@@ -96,7 +96,7 @@ already has the in-memory copy):
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="SimulaSharp" Version="0.3.0" />
+        <PackageReference Include="SimulaSharp" Version="0.4.0" />
     </ItemGroup>
 
     <ItemGroup>
