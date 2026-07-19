@@ -401,4 +401,6 @@ public partial class Egse : LooselyCoupledServiceBase
 - **[Associations](#/guide/associations)** — the other cross-thread partner, `[CrossReference<T>]`, and its same-site fast
   path (which services never have).
 - **[The assembly](#/guide/the-assembly)** — declaring services and binding `[ServiceRef]` deps by name.
+- **[Global events](#/guide/events)** — the ownerless, multi-producer sibling of `[ServiceEvent]`: a scheduler-less
+  pub/sub channel any model can fire, decoupled from any service.
 - **[Interaction patterns](#/guide/interaction-patterns)** — putting events and requests together into real flows.

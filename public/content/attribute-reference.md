@@ -149,3 +149,32 @@ public partial class Radar : ModelBase
 
 For how these attributes appear in the assembly (the `Services`, `Deps`, `Config` blocks), see the
 **[Assembly YAML reference](#/guide/assembly-yaml-reference)**.
+
+## Global events
+
+The member-level attributes that plug a model into a **global event** — a scheduler-less, ownerless, multi-producer
+pub/sub primitive. The generated simulator wires both sides at assembly time; see **[global events](#/guide/events)**.
+
+| Attribute | Target | Parameters | Effect |
+|---|---|---|---|
+| [`EventHandlerAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.EventHandlerAttribute) | **method** | *(none)* | Marks a **subscription target** (consumer). Must be `void` with **0 parameters** (argless event) or a **single parameter** of the payload type. The assembly's `Subscriptions` block binds it by event name; it runs on **this model's own site** when the event fires. |
+| [`EventReferenceAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.EventReferenceAttribute) | settable field/property typed [`ISimEventInvocator`](#/api/type/SimulaSharp.Kernel.Events.ISimEventInvocator) / [`ISimEventInvocator<T>`](#/api/type/SimulaSharp.Kernel.Events.ISimEventInvocator`1) | *(none)* | Marks a **producer handle** (trigger-only — producers can't subscribe). The assembly's `Triggers` block binds it by event name; the simulator fills it with the shared event. Fire it with `Trigger()` / `Trigger(arg)`. |
+
+```csharp
+public partial class Eps : ModelBase
+{
+    [EventReference]                                   // producer: bound by Triggers in the YAML
+    public ISimEventInvocator<double> BusFault { get; set; } = null!;
+}
+
+public partial class Heater : ModelBase, IPowerConsumer
+{
+    [EventHandler]                                     // consumer: bound by Subscriptions in the YAML
+    public void OnBusFault(double busVoltage) { /* runs on the Heater's own site */ }
+}
+```
+
+The events themselves ([`SimEvent`](#/api/type/SimulaSharp.Kernel.Events.SimEvent) /
+[`SimEvent<T>`](#/api/type/SimulaSharp.Kernel.Events.SimEvent`1), or a custom
+[`ISimEvent<TSub>`](#/api/type/SimulaSharp.Kernel.Events.ISimEvent`1)) are declared in the assembly's `Events:` block —
+see the **[Assembly YAML reference](#/guide/assembly-yaml-reference)**.

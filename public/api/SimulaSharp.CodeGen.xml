@@ -163,6 +163,9 @@
             </list>
             </summary>
         </member>
+        <member name="T:SimulaSharp.CodeGen.ServiceGenerator.DiagInfo">
+            <summary>A diagnostic to raise on the output side, carried out of the transform (which cannot report).</summary>
+        </member>
         <member name="M:SimulaSharp.CodeGen.ServiceGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
             <inheritdoc/>
         </member>
@@ -200,6 +203,10 @@
             child never needs the not-yet-constructed parent. Records service deps and references for later passes.
             </summary>
         </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.EventCtor(SimulaSharp.CodeGen.SimulatorGenerator.EventDesc)">
+            <summary>The constructor expression for a declared event: a custom <c>Type</c> if given, else the stock
+            <c>SimEvent&lt;ArgType&gt;</c> (payload) or <c>SimEvent</c> (argless).</summary>
+        </member>
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.DerivesFrom(Microsoft.CodeAnalysis.INamedTypeSymbol,Microsoft.CodeAnalysis.INamedTypeSymbol)">
             <summary>True if <paramref name="type"/> (or an ancestor) is <paramref name="baseType"/>. False if either is null.</summary>
         </member>
@@ -218,6 +225,27 @@
             service): the member exists and is <c>[ServiceRef]</c>, the named service is known, and it is
             assignable to the member. Shared by model deps and service→service deps.
             </summary>
+        </member>
+        <member name="T:SimulaSharp.CodeGen.SimulatorGenerator.Validator.EventInfo">
+            <summary>A resolved event's shape: its subscriber constraint (<c>TSub</c>), its payload (<c>null</c> when
+            argless), and whether it carries a payload.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Validator.ResolveEvent(SimulaSharp.CodeGen.SimulatorGenerator.EventDesc)">
+            <summary>Resolves a declared event to its <see cref="T:SimulaSharp.CodeGen.SimulatorGenerator.Validator.EventInfo"/>, reporting SIM028 when the custom
+            <c>Type</c> doesn't implement <c>ISimEvent&lt;…&gt;</c> or disagrees with the declared <c>ArgType</c>. A
+            stock event (no <c>Type</c>) has subscriber <c>IModel</c> and payload = <c>ArgType</c> (or none).</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Validator.SimEventShape(Microsoft.CodeAnalysis.INamedTypeSymbol)">
+            <summary>The <c>(TSub, payload)</c> of the <c>ISimEvent&lt;TSub[,T]&gt;</c> that <paramref name="et"/>
+            implements — payload null for the argless form; <c>ok</c> false if it implements neither.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Validator.CheckSubscription(Microsoft.CodeAnalysis.INamedTypeSymbol,System.String,System.String,System.String,System.Collections.Generic.Dictionary{System.String,SimulaSharp.CodeGen.SimulatorGenerator.Validator.EventInfo})">
+            <summary>Validates one <c>Subscriptions</c> entry: a known event, an <c>[EventHandler]</c> void method whose
+            signature fits the event's payload, and a subscriber assignable to the event's <c>TSub</c>.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.Validator.CheckTrigger(Microsoft.CodeAnalysis.INamedTypeSymbol,System.String,System.String,System.Collections.Generic.Dictionary{System.String,SimulaSharp.CodeGen.SimulatorGenerator.Validator.EventInfo})">
+            <summary>Validates one <c>Triggers</c> entry: a known event and an <c>[EventReference]</c> member typed as the
+            matching trigger-only invocator (<c>ISimEventInvocator</c> / <c>ISimEventInvocator&lt;T&gt;</c>).</summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.EmitCtx.CrossReferenceElementType(System.String,System.String)">
             <summary>The fully-qualified interface <c>T</c> of the <c>[CrossReference&lt;T&gt;("name")]</c> declared on

@@ -19,6 +19,7 @@
         { "slug": "models-and-containment", "title": "Models & containment", "file": "models-and-containment.md" },
         { "slug": "associations", "title": "Associations: containment vs reference", "file": "associations.md" },
         { "slug": "services", "title": "Services", "file": "services.md" },
+        { "slug": "events", "title": "Global events", "file": "events.md" },
         { "slug": "observability", "title": "Observability: knobs & plottables", "file": "observability.md" },
         { "slug": "configuration", "title": "Parameters", "file": "configuration.md" },
         { "slug": "the-assembly", "title": "The assembly", "file": "the-assembly.md" },

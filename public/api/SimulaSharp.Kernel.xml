@@ -82,6 +82,23 @@
         <member name="P:SimulaSharp.Kernel.Attributes.CrossReferenceAttribute`1.Name">
             <summary>The reference accessor name: the generated property's name and the YAML <c>Refs</c> key.</summary>
         </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.EventHandlerAttribute">
+            <summary>
+            Marks a model method as a global-event subscription target. The method must be <c>void</c> and take either no
+            parameters (for an argless event) or a single parameter of the event's payload type. The assembly's
+            <c>Subscriptions</c> block binds a named event to such a method; the simulator registers it at assembly time so the
+            handler runs on the model's own site whenever the event fires.
+            </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.EventReferenceAttribute">
+            <summary>
+            Marks a model property or field as a producer handle to a global event. The member must be typed as an
+            <see cref="T:SimulaSharp.Kernel.Events.ISimEventInvocator"/> (argless) or <see cref="T:SimulaSharp.Kernel.Events.ISimEventInvocator`1"/> (with payload). The assembly's
+            <c>Triggers</c> block binds a named event to the member; the simulator fills it with the shared event instance so the
+            model can <c>Trigger</c> it. The invocator surface is trigger-only — a producer cannot register subscribers, which
+            keeps subscription the simulator's exclusive job.
+            </summary>
+        </member>
         <member name="T:SimulaSharp.Kernel.Attributes.KnobAttribute">
             <summary>
             Base for attributes that decorate model members to be exposed as knobs in the UI.
@@ -515,6 +532,86 @@
             code-generation hint on the interface contract; it is invisible to tooling that reads the model's structure.
             </para>
             </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Events.ISimEvent`1">
+            <summary>
+            A global, scheduler-less pub/sub event. Unlike a <see cref="T:SimulaSharp.Kernel.Model.IService">service</see> — which owns a scheduler and
+            serializes every interaction through it — an event is a passive fan-out: any thread may
+            <see cref="M:SimulaSharp.Kernel.Events.ISimEventInvocator.Trigger"/> it, and each subscriber's handler is posted onto that subscriber's own
+            site. It costs nothing at rest (no thread, no serial executor) and is multi-producer.
+            <para>
+            <typeparamref name="TSub"/> is the subscriber identity a custom event may key on for routing/filtering (a bus or
+            router); the stock <see cref="T:SimulaSharp.Kernel.Events.SimEvent"/> ignores it and it exists only for a uniform signature. Registration is
+            synchronous, at assembly time (the simulator wires it from the assembly's <c>Subscriptions</c> block, before the run
+            starts) — so the stock implementation needs no locking; a custom event that mutates routing state at trigger time
+            owns its own synchronization.
+            </para>
+            </summary>
+            <typeparam name="TSub">The subscriber type; constrained to <see cref="T:SimulaSharp.Kernel.Model.IModel"/> so it carries its own scheduler.</typeparam>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Events.ISimEvent`1.Register(`0,System.Action)">
+            <summary>Registers <paramref name="handler"/> on behalf of <paramref name="subscriber"/>; on trigger the handler
+            is posted onto the subscriber's own site. Called by the simulator during assembly, never at run time.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Events.ISimEvent`2">
+            <summary>
+            A global, scheduler-less pub/sub event carrying a payload of type <typeparamref name="T"/>. See
+            <see cref="T:SimulaSharp.Kernel.Events.ISimEvent`1"/>.
+            </summary>
+            <typeparam name="TSub">The subscriber type; constrained to <see cref="T:SimulaSharp.Kernel.Model.IModel"/> so it carries its own scheduler.</typeparam>
+            <typeparam name="T">The event payload type.</typeparam>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Events.ISimEvent`2.Register(`0,System.Action{`1})">
+            <summary>Registers <paramref name="handler"/> on behalf of <paramref name="subscriber"/>; on trigger the handler
+            is posted, with the triggered payload, onto the subscriber's own site.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Events.ISimEventInvocator">
+            <summary>
+            The producer capability of a global event: it can be <see cref="M:SimulaSharp.Kernel.Events.ISimEventInvocator.Trigger">triggered</see>, but not subscribed to.
+            This is the surface an <c>[EventReference]</c> member holds — a producer fires the event, while registration is the
+            simulator's job (driven by the assembly's <c>Subscriptions</c> block). Triggering is safe from any thread.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Events.ISimEventInvocator.Trigger">
+            <summary>Fires the event: every registered subscriber's handler is posted onto its own site (fire-and-forget).</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Events.ISimEventInvocator`1">
+            <summary>
+            The producer capability of a global event carrying a payload of type <typeparamref name="T"/>. See
+            <see cref="T:SimulaSharp.Kernel.Events.ISimEventInvocator"/>.
+            </summary>
+            <typeparam name="T">The event payload type (contravariant — a producer of a wider payload satisfies a narrower one).</typeparam>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Events.ISimEventInvocator`1.Trigger(`0)">
+            <summary>Fires the event with <paramref name="arg"/>: every subscriber's handler is posted, with the payload,
+            onto its own site (fire-and-forget).</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Events.SimEvent">
+            <summary>
+            The stock, logic-free global event (payload-less). Registration captures each subscriber's scheduler; a
+            <see cref="M:SimulaSharp.Kernel.Events.SimEvent.Trigger"/> posts every handler onto its subscriber's own site. The subscriber identity itself is
+            unused — it is accepted only for uniformity with routing events. Because every <see cref="M:SimulaSharp.Kernel.Events.SimEvent.Register(SimulaSharp.Kernel.Model.IModel,System.Action)"/> runs
+            synchronously at assembly time (before the run starts) and triggering only reads the subscriber list, no locking is
+            needed.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Events.SimEvent.Register(SimulaSharp.Kernel.Model.IModel,System.Action)">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Events.SimEvent.Trigger">
+            <inheritdoc/>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Events.SimEvent`1">
+            <summary>
+            The stock, logic-free global event carrying a payload of type <typeparamref name="T"/>. See <see cref="T:SimulaSharp.Kernel.Events.SimEvent"/>.
+            </summary>
+            <typeparam name="T">The event payload type.</typeparam>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Events.SimEvent`1.Register(SimulaSharp.Kernel.Model.IModel,System.Action{`0})">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Events.SimEvent`1.Trigger(`0)">
+            <inheritdoc/>
         </member>
         <member name="T:SimulaSharp.Kernel.Knobs.IKnobChannel">
             <summary>
@@ -2103,6 +2200,13 @@
             Registers a clock-ungated (loosely-coupled) service — adopting its
             <see cref="T:SimulaSharp.Kernel.Services.LooselyCoupledSite"/> into the simulation's lifecycle (started, stopped, and
             disposed with the run) and its <c>Configure</c>/<c>Dispose</c> hooks.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.RegisterEvent``1(``0)">
+            <summary>
+            Roots a global event (an <see cref="T:SimulaSharp.Kernel.Events.ISimEvent`1"/> instance) for the simulation's
+            lifetime. Events have no site or lifecycle of their own — they are passive fan-out channels — but must stay
+            reachable while producers (<c>[EventReference]</c>) and subscribers hold them, hence this anchor.
             </summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.OnAssembled">

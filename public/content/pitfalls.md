@@ -21,6 +21,7 @@ Keep those and the rest fall away.
 | Expecting reset | second run reuses stale state / throws | build a **new** simulator |
 | Over-exposing knobs | unreadable panel; brittle contract | expose only what an operator needs |
 | Arming events in the constructor | refs/config not yet wired — nulls, wrong values | arm in `Configure()` |
+| A handler or coroutine throws | it's caught, logged, and dropped — the site keeps running | look in the `SimulatorThreads.<site>` error log |
 
 ---
 

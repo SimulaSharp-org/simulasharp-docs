@@ -2,7 +2,7 @@
 
 The **assembly** is the YAML file that names your sites, services, and the model tree, and wires them together.
 The generator parses it (with YamlDotNet), validates it against your real types, and emits a
-`<Name>Simulator`. This page is the exhaustive schema plus the complete `SIM001`–`SIM022` diagnostics table. For
+`<Name>Simulator`. This page is the exhaustive schema plus the complete `SIM001`–`SIM028` diagnostics table. For
 the concepts, read **[the assembly](#/guide/the-assembly)**.
 
 Register the file by tagging it `<SimAssembly Include="…" />` in your csproj (any name — the `.simassembly.yaml`
@@ -19,6 +19,11 @@ Simulator:
     - Name: Tracker                    # instance name (referenced by Deps)
       Type: Demo.DemoService           # fully-qualified type (must implement IService)
       # Config: { … }                  # optional [Parameter] values for the service
+
+  Events:
+    - Name: BusFault                   # global event name (referenced by Triggers/Subscriptions)
+      ArgType: System.Double           # optional payload type; omit → an argless SimEvent
+      # Type: Demo.RoutingEvent        # optional custom ISimEvent<…>; default SimEvent / SimEvent<ArgType>
 
   Sites:
     - Name: Main                       # site (one thread, one event queue)
@@ -40,6 +45,10 @@ Simulator:
                   Config: { Rate: 2.5 }
           Deps:                        # one entry per [ServiceRef] member
             - Tracker: Tracker         # <serviceRefMember>: serviceName
+          Triggers:                    # one entry per [EventReference] producer member
+            - BusFault: BusFault       # <eventReferenceMember>: eventName
+          Subscriptions:               # one entry per [EventHandler] consumer method
+            - OnBusFault: BusFault     # <eventHandlerMethod>: eventName
 ```
 
 The full **instance path** is the dotted chain from the simulator name down: `Plant.Plant1.UnitA`. Paths must be
@@ -52,6 +61,7 @@ unique and are what `Refs` target.
 | `Name` | **yes** | — | The simulator's name; becomes the generated class name `<Name>Simulator` and the root path segment. |
 | `MissionStart` | no | Unix epoch (UTC) | Absolute mission epoch (a date/time). `MissionNowUs = epoch + horizon`. |
 | `Services` | no | *(none)* | List of shared **service** instances. |
+| `Events` | no | *(none)* | List of shared **global event** instances (scheduler-less pub/sub). |
 | `Sites` | no | *(none)* | List of **SimSites**, each owning a model subtree. |
 
 ## `Services[]`
@@ -62,6 +72,17 @@ unique and are what `Refs` target.
 | `Type` | **yes** | — | Fully-qualified type; must implement `IService` and have a `(IClock, ILogger)` ctor. |
 | `Config` | no | *(none)* | Map of `[Parameter]` key → scalar for the service (optional; an omitted key uses the parameter's attribute default). |
 | `Deps` | no | *(none)* | **Service→service deps.** Same shape as a model's `Deps` — a list of `{ <serviceRefMember>: serviceName }` binding a `[ServiceRef]` member to another service. Cycles are allowed (A→B and B→A): every service is constructed before any dep is bound. |
+
+## `Events[]`
+
+Each entry declares one **global event** — a scheduler-less, ownerless, multi-producer pub/sub primitive. Producers are
+wired via a model's `Triggers`, consumers via a model's `Subscriptions`. See **[global events](#/guide/events)**.
+
+| Field | Required | Default | Meaning |
+|---|---|---|---|
+| `Name` | **yes** | — | Instance name; referenced from a model's `Triggers` and `Subscriptions`. |
+| `ArgType` | no | *(none — argless)* | Fully-qualified payload type. Omit for an argless event (`SimEvent`); supply it for a typed event (`SimEvent<ArgType>`). |
+| `Type` | no | `SimEvent` / `SimEvent<ArgType>` | Fully-qualified custom event type; must implement `ISimEvent<…>` and agree with `ArgType`. Omit for the stock, logic-free event. |
 
 ## `Sites[]`
 
@@ -84,12 +105,15 @@ Each node describes one model instance and its subtree.
 | `Refs` | no | *(none)* | **Intra-site references.** A list of `{ <referenceName>: [ dotted.paths ] }`; each key names a `[Reference<T>]` (same-site) on this type, each value a target instance path. |
 | `CRefs` | no | *(none)* | **Cross-site references.** A list of `{ <referenceName>: [ dotted.paths ] }`; each key names a `[CrossReference<T>]` (may cross sites) on this type, each value a target instance path. |
 | `Deps` | no | *(none)* | **Service deps.** A list of `{ <serviceRefMember>: serviceName }` binding a `[ServiceRef]` member to a service instance. |
+| `Triggers` | no | *(none)* | **Event producers.** A list of `{ <eventReferenceMember>: eventName }` binding an `[EventReference]` member to a global event under `Events`. |
+| `Subscriptions` | no | *(none)* | **Event consumers.** A list of `{ <eventHandlerMethod>: eventName }` binding an `[EventHandler]` method to a global event under `Events`. |
 
-`Config` values are scalars (numbers, strings, bools) bound into `[Parameter]` members. `Models`/`Refs`/`CRefs`/`Deps` are
-lists of single-key maps so one node can populate several fields. See
-**[models & containment](#/guide/models-and-containment)** and **[associations](#/guide/associations)**.
+`Config` values are scalars (numbers, strings, bools) bound into `[Parameter]` members.
+`Models`/`Refs`/`CRefs`/`Deps`/`Triggers`/`Subscriptions` are lists of single-key maps so one node can populate several
+fields. See **[models & containment](#/guide/models-and-containment)**, **[associations](#/guide/associations)**, and
+**[global events](#/guide/events)**.
 
-## Diagnostics — SIM001–SIM022
+## Diagnostics — SIM001–SIM028
 
 Every problem is a **build error** (except SIM015, a **warning**). On any error the simulator is **not emitted**,
 so there is no cascade — fix the reported id and rebuild.
@@ -118,8 +142,14 @@ so there is no cascade — fix the reported id and rebuild.
 | **SIM020** | Unsupported `[Plottable]` member type. | Make the plottable member a readable **numeric**, **bool**, or **enum** property. |
 | **SIM021** | `[VolatileAccess]` property is not a gauge. | A `[VolatileAccess]` interface property must be get-only and of an atomically-readable type (primitive, enum, or reference). |
 | **SIM022** | Service request has more than one parameter. | A `[ServiceRequest] Handle_X` carries a single optional context — reduce it to zero or one parameter. |
+| **SIM023** | Unknown event. | A `Subscriptions`/`Triggers` entry names an event not declared under `Events:` — add it or correct the name. |
+| **SIM024** | Invalid event handler. | The `Subscriptions` method is missing, not `[EventHandler]`, or not `void` — mark a `void` method with `[EventHandler]`. |
+| **SIM025** | Handler signature mismatch. | Wrong arity/payload — an argless event needs a 0-parameter handler; a typed event needs a single parameter the payload is assignable to. |
+| **SIM026** | Wrong subscriber type. | The subscribing model isn't assignable to the event's `TSub` — the stock event accepts all (`IModel`); a custom event's `TSub` may be narrower. |
+| **SIM027** | Invalid event reference. | The `Triggers` member isn't `[EventReference]`, or isn't typed as the matching `ISimEventInvocator` / `ISimEventInvocator<T>`. |
+| **SIM028** | Invalid event type. | A custom `Type` doesn't implement `ISimEvent<…>`, or disagrees with the declared `ArgType` — align the type and its argument. |
 
 > SIM001–SIM019 come from the simulator/reference generators; SIM020 from the plottable generator; SIM021 from the
-> reference generator; SIM022 from the service generator.
+> reference generator; SIM022 from the service generator; SIM023–SIM028 from the simulator generator (global-event wiring).
 
 With a clean assembly, you have a runnable simulator — see **[Build, run & test](#/guide/build-run-test)**.

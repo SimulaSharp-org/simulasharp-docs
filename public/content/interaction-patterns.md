@@ -228,4 +228,7 @@ Both keep the thread free; both make the reaction run on *your* site so it can t
 | React to a reply from a plain event | `task.ContinueWith(_ => Scheduler.Post(() => …))` |
 | Wait on a reply from *on* a site thread | **never** `.Result`/`.Wait()` — see [pitfalls](#/guide/pitfalls) |
 
+For an ownerless "this just happened" broadcast that *any* model can raise — decoupled from any service — see
+**[global events](#/guide/events)**.
+
 Next: deciding whether a thing should be a model or a service at all — **[model vs service](#/guide/model-vs-service)**.
