@@ -104,10 +104,11 @@ Two instances of the same model each get their **own** parameter with its own pa
 
 ## What the generator emits
 
-For every model or service with `[Parameter]` members, the
+For every model or service, the
 [`ParameterGenerator`](#/api/type/SimulaSharp.CodeGen.ParameterGenerator) emits two things on the partial class: an
 `__ApplyParameters` binder and an explicit `IParameterProvider.CollectParameters` that builds the `ParameterInfo`
-binders. The binder for `Capacity` above:
+binders. (A model with **no** `[Parameter]` members still gets an *empty* pair — the simulator calls `__ApplyParameters`
+on every instance during assembly, so the method must always exist.) The binder for `Capacity` above:
 
 ```csharp
 {
@@ -173,9 +174,15 @@ sequenceDiagram
 
 The assembly generator cross-checks your `Config:` blocks against each type's real `[Parameter]` members. If a YAML key
 has **no matching `[Parameter]` member** (by key or member name), you get a **warning**,
-[`SIM015`](#/guide/assembly-yaml-reference): *"Config key '…' has no matching [Parameter] member on '…'."* It is a
+[`SIM016`](#/guide/assembly-yaml-reference): *"Config key '…' has no matching [Parameter] member on '…'."* It is a
 warning, not an error, so a stray key does not break the build — but it flags the typo that would otherwise silently do
 nothing.
+
+Because the simulator applies parameters (and their defaults) on **every** instance, each model and service must be
+declared **`partial`** — the modifier the generator needs to add the `__ApplyParameters` method. A non-partial
+model/service is a build error, [`SIM029`](#/guide/assembly-yaml-reference): *"…must be declared 'partial' so the
+framework can generate its code."* This is the norm anyway — knobs, references, containment and events all require a
+partial class too.
 
 The complementary failure — a `Required` key you forgot to supply — is the `InvalidOperationException` thrown while the
 simulator is being constructed. That is the one parameter failure you see at run time rather than build time, and it is

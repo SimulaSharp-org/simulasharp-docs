@@ -30,7 +30,7 @@ using SimulaSharp.Kernel.Services;
 
 namespace Hello;
 
-public sealed class Heartbeat(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
+public sealed partial class Heartbeat(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     // Called once, after the tree is built and wired. Register long-running work here —
     // never in the constructor (see models & containment).

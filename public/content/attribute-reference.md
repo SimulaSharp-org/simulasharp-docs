@@ -134,7 +134,7 @@ The attributes that shape a **service**'s interaction surface. The generator own
 
 ```csharp
 [ServiceEvent("TargetUpdated", typeof(TrackId))]   // service → models
-public sealed class Tracker : ServiceBase
+public sealed partial class Tracker : ServiceBase
 {
     [ServiceRequest]                               // models → service, request "Register"
     private void Handle_Register(TrackId id) { /* … */ }

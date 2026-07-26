@@ -16,7 +16,7 @@ using SimulaSharp.Kernel.Logging;
 using SimulaSharp.Kernel.Model;
 using SimulaSharp.Kernel.Services;
 
-public sealed class Pump(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
+public sealed partial class Pump(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     // your state and behaviour go here
 }
@@ -81,7 +81,7 @@ when they come due. The scheduling verbs are relative-to-now delays; the action 
 argument** — when it needs "now", it reads the clock.
 
 ```csharp
-public sealed class Pump(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
+public sealed partial class Pump(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     private double _flow;
 

@@ -53,7 +53,7 @@ using SimulaSharp.Kernel.Logging;
 using SimulaSharp.Kernel.Model;
 using SimulaSharp.Kernel.Services;
 
-public sealed class Heartbeat(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
+public sealed partial class Heartbeat(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     public override void Configure()
         => Scheduler.AddPeriodicEvent(Beat, periodUs: 1_000_000);   // once a second of real time
