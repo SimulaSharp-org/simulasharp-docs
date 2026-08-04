@@ -60,6 +60,20 @@
         <member name="M:SimulaSharp.CodeGen.ParameterGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
             <inheritdoc/>
         </member>
+        <member name="M:SimulaSharp.CodeGen.ParameterGenerator.CollectParams(Microsoft.CodeAnalysis.INamedTypeSymbol)">
+            <summary>The <c>[Parameter]</c>-annotated, settable, convertible members declared directly on <paramref name="type"/>.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ParameterGenerator.BaseChainHasParams(Microsoft.CodeAnalysis.INamedTypeSymbol)">
+            <summary>True if any base type in the chain declares a generatable <c>[Parameter]</c> member — so this type
+            inherits a generated <c>__ApplyParameters</c> and must not shadow it with an empty one.</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.ParameterGenerator.PartialViolation(Microsoft.CodeAnalysis.GeneratorSyntaxContext)">
+            <summary>
+            For a non-partial class, reports whether it implements <c>IModel</c>/<c>IService</c> (and therefore must be
+            <c>partial</c>). The framework's own base classes implement those contracts but are hand-written and need no
+            generation, so they are excluded. Returns the identifier location, the type name, and the contract's name.
+            </summary>
+        </member>
         <member name="M:SimulaSharp.CodeGen.ParameterGenerator.EmitApply(System.Text.StringBuilder,System.String,SimulaSharp.CodeGen.ParameterGenerator.Param)">
             <summary>Binds one parameter from the assembly's Config dict; falls back to the attribute default, or throws if Required.</summary>
         </member>
@@ -206,6 +220,15 @@
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.EventCtor(SimulaSharp.CodeGen.SimulatorGenerator.EventDesc)">
             <summary>The constructor expression for a declared event: a custom <c>Type</c> if given, else the stock
             <c>SimEvent&lt;ArgType&gt;</c> (payload) or <c>SimEvent</c> (argless).</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.EmitApplyParameters(System.Text.StringBuilder,System.String,System.Collections.Generic.Dictionary{System.String,System.String})">
+            <summary>
+            Emits the <b>unconditional</b> <c>__ApplyParameters</c> call for a model/service. It is emitted even when the
+            instance has no <c>Config:</c> block, because the generated method also stamps each parameter's attribute
+            <b>default</b> for the keys that are absent — skipping the call would leave every defaulted parameter unset.
+            The (possibly empty) method is guaranteed to exist: every model/service must be <c>partial</c> (SIM029) and
+            the parameter generator emits one for each.
+            </summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.SimulatorGenerator.DerivesFrom(Microsoft.CodeAnalysis.INamedTypeSymbol,Microsoft.CodeAnalysis.INamedTypeSymbol)">
             <summary>True if <paramref name="type"/> (or an ancestor) is <paramref name="baseType"/>. False if either is null.</summary>

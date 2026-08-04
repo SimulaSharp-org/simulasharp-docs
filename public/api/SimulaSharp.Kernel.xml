@@ -1373,6 +1373,39 @@
             <see cref="T:SimulaSharp.Kernel.Model.IModelRef"/>, exactly as <see cref="T:SimulaSharp.Kernel.Primitives.ContainerFactory"/> carries children unified by <c>IModel</c>.
             </summary>
         </member>
+        <member name="T:SimulaSharp.Kernel.Primitives.SimAwaitToken">
+            <summary>
+            The caller-owned outcome of a <b>bounded</b> await
+            (<see cref="M:SimulaSharp.Kernel.Primitives.SimYield.Await(System.Threading.Tasks.Task,System.Int64,SimulaSharp.Kernel.Primitives.SimAwaitToken)"/>). A coroutine receives nothing on
+            resume, so it creates one of these, passes it into the bounded await, and reads <see cref="P:SimulaSharp.Kernel.Primitives.SimAwaitToken.TimedOut"/> after it
+            re-enters to learn why it resumed:
+            <code>
+            var tok = new SimAwaitToken();
+            var t = peer.SlowRequest();
+            yield return SimYield.Await(t, timeoutUs: 5_000, tok);
+            // ── resumed here ──
+            if (tok.TimedOut) { /* gave up waiting */ }
+            else             { var r = t.GetAwaiter().GetResult(); }   // complete by now
+            </code>
+            <para>
+            The runtime resolves the token to exactly one outcome — completed or timed-out — whichever occurs first; the
+            other is ignored. On a timeout the awaited task is <b>not</b> cancelled: it keeps running and its eventual
+            completion is discarded, so its result must not be read. Create a fresh token per await; do not reuse or share one.
+            </para>
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Primitives.SimAwaitToken.TimedOut">
+            <summary>True once the await resumed because its timeout elapsed before the task completed.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Primitives.SimAwaitToken.Completed">
+            <summary>True once the await resumed because the task completed before the timeout.</summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Primitives.SimAwaitToken.TryResolve(System.Boolean)">
+            <summary>
+            Resolves the token to a single outcome. Returns <c>true</c> for the caller that wins the race (and should
+            resume the coroutine); <c>false</c> if the token was already resolved by the other trigger.
+            </summary>
+        </member>
         <member name="T:SimulaSharp.Kernel.Primitives.SimYield">
             <summary>
             The value a coroutine (<see cref="T:System.Collections.Generic.IEnumerator`1"/>) yields to say when
@@ -1388,6 +1421,20 @@
             rather than after a delay (see <see cref="M:SimulaSharp.Kernel.Primitives.SimYield.Await(System.Threading.Tasks.Task)"/>).
             </summary>
         </member>
+        <member name="F:SimulaSharp.Kernel.Primitives.SimYield.TimeoutUs">
+            <summary>
+            For a <b>bounded</b> await, the timeout in simulation microseconds: if <see cref="F:SimulaSharp.Kernel.Primitives.SimYield.Awaited"/> has not
+            completed within this long, the coroutine is resumed anyway and <see cref="F:SimulaSharp.Kernel.Primitives.SimYield.Token"/> is marked timed-out.
+            Meaningful only together with a non-null <see cref="F:SimulaSharp.Kernel.Primitives.SimYield.Token"/>; otherwise the await is unbounded.
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Primitives.SimYield.Token">
+            <summary>
+            The caller-owned outcome for a bounded await — non-null only for the timed
+            <see cref="M:SimulaSharp.Kernel.Primitives.SimYield.Await(System.Threading.Tasks.Task,System.Int64,SimulaSharp.Kernel.Primitives.SimAwaitToken)"/> overload. The runtime resolves it to completed-or-timed-out,
+            and the coroutine reads it after resuming to learn which happened.
+            </summary>
+        </member>
         <member name="P:SimulaSharp.Kernel.Primitives.SimYield.Immediate">
             <summary>Resume on the next processing pass (zero delay).</summary>
         </member>
@@ -1400,6 +1447,21 @@
             request), then resume it on its own site. Read the result from the task after
             resuming — it is complete by then:
             <code>var t = peer.Foo(Scheduler); yield return SimYield.Await(t); var r = t.GetAwaiter().GetResult();</code>
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Primitives.SimYield.Await(System.Threading.Tasks.Task,System.Int64,SimulaSharp.Kernel.Primitives.SimAwaitToken)">
+            <summary>
+            Suspend the coroutine until <paramref name="task"/> completes <b>or</b> <paramref name="timeoutUs"/> simulation
+            microseconds elapse — whichever comes first — then resume it on its own site. After resuming, read
+            <paramref name="token"/>: <see cref="P:SimulaSharp.Kernel.Primitives.SimAwaitToken.TimedOut"/> is <c>false</c> when the task completed (read its
+            result), <c>true</c> when the timeout fired first (the task is still running; do <b>not</b> read its result).
+            Pass a fresh <see cref="T:SimulaSharp.Kernel.Primitives.SimAwaitToken"/> per await — it is the channel that carries the outcome back:
+            <code>
+            var tok = new SimAwaitToken();
+            var t = peer.SlowRequest();
+            yield return SimYield.Await(t, timeoutUs: 5_000, tok);
+            if (tok.TimedOut) { /* gave up */ } else { var r = t.GetAwaiter().GetResult(); }
+            </code>
             </summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Primitives.TimeSnapshot">
@@ -1486,9 +1548,17 @@
         </member>
         <member name="F:SimulaSharp.Kernel.Services.EventQueue.OnAwait">
             <summary>
-            Invoked when a coroutine yields <see cref="M:SimulaSharp.Kernel.Primitives.SimYield.Await(System.Threading.Tasks.Task)"/>, with (slot, version, task).
+            Invoked when a coroutine yields an unbounded <see cref="M:SimulaSharp.Kernel.Primitives.SimYield.Await(System.Threading.Tasks.Task)"/>, with (slot, version, task).
             The owner (SimSite) must arrange to call <see cref="M:SimulaSharp.Kernel.Services.EventQueue.ReArm(System.Int32,System.Int32,System.Int64)"/> on its own thread once the
             task completes; set it before running awaiting coroutines.
+            </summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.EventQueue.OnAwaitTimed">
+            <summary>
+            Invoked when a coroutine yields a <b>bounded</b> <see cref="M:SimulaSharp.Kernel.Primitives.SimYield.Await(System.Threading.Tasks.Task,System.Int64,SimulaSharp.Kernel.Primitives.SimAwaitToken)"/>, with
+            (slot, version, task, timeoutUs, token). The owner (SimSite) resumes the coroutine via <see cref="M:SimulaSharp.Kernel.Services.EventQueue.ReArm(System.Int32,System.Int32,System.Int64)"/> on
+            its own thread when the task completes <em>or</em> the timeout elapses — whichever comes first — resolving the
+            token to the matching outcome. Set it before running awaiting coroutines.
             </summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.EventQueue.#ctor(System.Int32,SimulaSharp.Kernel.Logging.ILogger)">

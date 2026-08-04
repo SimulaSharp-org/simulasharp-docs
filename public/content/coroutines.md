@@ -59,18 +59,20 @@ elapses. If you `AddCoroutine(Behaviour, delayUs: 5_000)`, the very first statem
 a horizon that reflects *then*. This keeps deferred processes honest: a coroutine scheduled for the future captures state
 at the future instant, not at scheduling time.
 
-## The three yields
+## The yields
 
-`SimYield` has exactly three factories:
+`SimYield` has four factories — three timing forms plus a **bounded** await:
 
 | Yield | Meaning | Resumes when |
 |---|---|---|
 | `SimYield.Immediate` | Zero delay | The **next** processing pass (due == now, so not this pass) |
 | `SimYield.Delay(us)` | Wait `us` µs of sim time | The horizon reaches `resumeDue = current due + us` |
 | `SimYield.Await(task)` | **Park** on a `Task` | The `task` completes (then resume on this site's thread) |
+| `SimYield.Await(task, us, token)` | **Park** on a `Task`, with a timeout | The `task` completes **or** `us` µs of sim time pass — whichever first; poll `token.TimedOut` after |
 
-`Immediate` and `Delay` re-schedule by advancing the slot's due time (`Immediate` is just `Delay(0)`); `Await` is
-different — it parks with no time schedule at all. Note that `Immediate` resumes on the *next* pass, never the current
+`Immediate` and `Delay` re-schedule by advancing the slot's due time (`Immediate` is just `Delay(0)`); both `Await`
+forms are different — they park with no time schedule (the bounded form also arms a sim-time deadline; see
+[Await with a timeout](#await-with-a-timeout)). Note that `Immediate` resumes on the *next* pass, never the current
 one — that's the [two-phase ProcessDue](#/guide/event-queue-and-scheduling) rule, and it's what stops a `while(true) {
 yield return SimYield.Immediate; }` coroutine from starving its site: it yields the thread back every step.
 
@@ -174,6 +176,70 @@ double pressure = t.GetAwaiter().GetResult();   // safe: complete by now, won't 
 rethrows on your thread — and an unhandled throw in a coroutine step is caught by the queue, which drops and disposes the
 coroutine; see [the event queue](#/guide/event-queue-and-scheduling).)
 
+## Await with a timeout
+
+An unbounded `Await` waits forever. When a reply might never come — a flaky peer, a hardware link that could stall — use
+the **bounded** overload, `SimYield.Await(task, timeoutUs, token)`: it resumes on the task's completion **or** after
+`timeoutUs` of *simulation* time, whichever comes first.
+
+A coroutine receives nothing on resume (a `yield return` hands back a value; it doesn't take one), so the outcome comes
+back through a caller-owned object you pass in and read after: a
+[`SimAwaitToken`](#/api/type/SimulaSharp.Kernel.Primitives.SimAwaitToken). Create one, await with it, then poll
+`TimedOut`:
+
+```csharp
+var tok = new SimAwaitToken();
+Task<double> reading = _sensor.ReadPressure();
+yield return SimYield.Await(reading, timeoutUs: 5_000, tok);   // wait ≤ 5 ms of sim time
+// ── resumed here ──
+if (tok.TimedOut)
+{
+    UseLastKnownGood();                              // the reply didn't arrive in time
+}
+else
+{
+    double p = reading.GetAwaiter().GetResult();     // completed — safe to read
+    Act(p);
+}
+```
+
+> **Create a fresh token per await.** The token *is* the identity of that one wait — reusing or sharing one across awaits
+> breaks the resolution. Allocate it right before the `yield`.
+
+### How the race is settled
+
+The runtime arms **two** triggers and lets the token decide the winner — a single, one-shot resolution:
+
+1. The **task-completion** continuation, exactly as for an unbounded await (`Post`s a re-arm into the site inbox).
+2. A **sim-time deadline** — a one-shot event scheduled at `now + timeoutUs` on the site's own queue.
+
+Whichever fires first resolves the token (`TimedOut = false` for completion, `true` for the deadline) and re-arms the
+coroutine; the loser sees the token already resolved and does nothing. Both resolutions run on the **site thread** (the
+deadline in `ProcessDue`, the completion via the inbox), so no lock is needed. On completion the moot deadline is
+cancelled; on timeout the deadline just wins.
+
+**The task is not cancelled on timeout.** A timed-out await leaves the underlying `Task` running — its eventual
+completion is simply discarded (the token is already resolved), so you must **not** read its result after a timeout.
+`token.TimedOut` is the gate that tells you whether the result is there to read.
+
+```mermaid
+sequenceDiagram
+  participant CO as coroutine (Site A)
+  participant EQ as EventQueue A
+  participant B as Site B (peer)
+  CO-->>EQ: yield Await(task, 5ms, token)
+  Note over EQ: park slot + schedule deadline at now+5ms
+  alt task completes first
+    B-->>EQ: ReArm (via inbox) — token → Completed
+    Note over EQ: cancel the deadline
+  else deadline first
+    Note over EQ: deadline fires — token → TimedOut
+    Note over B: task keeps running; its later result is discarded
+  end
+  EQ->>CO: MoveNext() — resume on A's thread
+  CO->>CO: if (token.TimedOut) … else read result
+```
+
 ## Coroutine vs periodic event
 
 Both let a model act over time. Reach for the right one:
@@ -247,6 +313,7 @@ What to notice:
 | Write a multi-step, time-spanning process | `AddCoroutine(factory, delay)`; `yield return SimYield.Delay(...)` between steps |
 | Yield the thread without waiting | `yield return SimYield.Immediate` (resumes next pass) |
 | Wait on a cross-site reply | `var t = peer.Call(); yield return SimYield.Await(t); var r = t.GetAwaiter().GetResult();` |
+| Wait on a reply, but not forever | `var tok = new SimAwaitToken(); yield return SimYield.Await(t, us, tok); if (tok.TimedOut) …` |
 | Defer a process's *start* | `AddCoroutine(factory, delayUs)` — the body first runs at that delay |
 | End a process early | `yield break;` (or fall off the end) — it's disposed and its slot freed |
 | Do the same thing on a fixed grid | Use a [periodic event](#/guide/event-queue-and-scheduling) instead |
