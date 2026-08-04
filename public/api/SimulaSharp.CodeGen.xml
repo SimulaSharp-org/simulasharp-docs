@@ -90,10 +90,11 @@
         </member>
         <member name="T:SimulaSharp.CodeGen.PlottableGenerator">
             <summary>
-            For every partial model with <c>[Plottable]</c> properties, implements
+            For every partial model <b>or service</b> with <c>[Plottable]</c> properties, implements
             <c>IPlottableProvider.CollectPlottables</c> — building a <c>Plottable</c>
             binder per member whose <c>Sample</c> delegate does a volatile read (through the
-            member's volatile getter) projected to <c>double</c>.
+            member's volatile getter) projected to <c>double</c>. Sampling is lock-free (the MMI reads on its own
+            thread), so — unlike knobs — nothing here dispatches onto the owner's thread.
             <para>
             Materialization is coordinated with <see cref="T:SimulaSharp.CodeGen.KnobGenerator"/>: a plottable property
             that is <em>also</em> a knob is already materialized (volatile backing field + partial

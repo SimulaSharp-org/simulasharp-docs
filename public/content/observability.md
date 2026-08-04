@@ -239,6 +239,9 @@ A **plottable** is the plot consumer's unit of telemetry: a named numeric series
 [`Plottable`](#/api/type/SimulaSharp.Kernel.Plotting.Plottable) binder whose `Sample` delegate is a **volatile read
 projected to `double`**.
 
+Like knobs, plottables can be declared on a **model or a service**. Sampling is a lock-free volatile read on the plot
+consumer's own thread — nothing marshals onto the owner — so a service's plottables are swept exactly like a model's.
+
 Supported member types:
 
 | Source type | Projection to `double` |
