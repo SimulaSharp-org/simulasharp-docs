@@ -639,9 +639,9 @@
         </member>
         <member name="T:SimulaSharp.Kernel.Knobs.IKnobProvider">
             <summary>
-            Implemented (explicitly, by the source generator) by models that declare knob
+            Implemented (explicitly, by the source generator) by models <b>or services</b> that declare knob
             members. The generated simulator calls <see cref="M:SimulaSharp.Kernel.Knobs.IKnobProvider.CollectKnobs(System.String,System.Collections.Generic.ICollection{SimulaSharp.Kernel.Knobs.Knob})"/> during discovery,
-            passing the model's full dotted path, so the model can build its <see cref="T:SimulaSharp.Kernel.Knobs.Knob"/>
+            passing the instance's full dotted path, so it can build its <see cref="T:SimulaSharp.Kernel.Knobs.Knob"/>
             binders (stamped with that path) and add them to the simulator's cached list.
             </summary>
         </member>
@@ -2258,8 +2258,9 @@
         <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.CreateLogger(System.String)">
             <summary>Creates a component-scoped logger over this simulation's clock and sink fan-out.</summary>
         </member>
-        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.CollectKnobsFrom(SimulaSharp.Kernel.Model.IModel,System.String)">
-            <summary>Collects a model's knobs (if any) into the simulation's cached list, stamped with its full path.</summary>
+        <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.CollectKnobsFrom(System.Object,System.String)">
+            <summary>Collects an instance's knobs (if any) into the simulation's cached list, stamped with its full path.
+            Works for both models and services (either may declare <c>[Knob]</c> members).</summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.SimulatorBase.CollectPlottablesFrom(SimulaSharp.Kernel.Model.IModel,System.String)">
             <summary>Collects a model's plottables (if any) into the simulation's map, keyed by full path.</summary>

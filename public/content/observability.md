@@ -43,6 +43,11 @@ delegates the generator supplies, plus a `Changed` event. You never construct on
 member, and the [`KnobGenerator`](#/api/type/SimulaSharp.CodeGen.KnobGenerator) materializes both the member and its
 binder.
 
+> **Models *and* services.** Knobs can be declared on **either** — a model, or a service (sim-paced or
+> loosely-coupled). The only difference is where an MMI-side write or trigger is marshalled: onto a model's
+> `Scheduler` or a service's `Site`, each being that entity's own thread. For a loosely-coupled service the `Site` is
+> a serial executor, so a trigger runs *best-effort* when the dispatcher is free — keep trigger handlers non-blocking.
+
 ### The five attributes
 
 There are five knob attributes. Four sit on a `partial` **property** and expose a value; one sits on a **method** and
@@ -124,8 +129,9 @@ Two subtleties worth internalizing:
 - **The model's own property is unboxed.** Your model code reads and writes `Speed` as a plain `int` straight off the
   field. Only the MMI path (`ReadBoxed`/`WriteBoxed`) boxes. You pay for boxing only when the outside world looks.
 - **A write from the MMI marshals its notification.** `WriteBoxed` does the atomic volatile write *immediately* (from
-  any thread), but `Scheduler.Post`s the `Changed` notification onto the **model's own site thread**. So any model
-  logic subscribed to the change runs where all that model's work runs — lock-free, on its one thread.
+  any thread), but posts the `Changed` notification onto the entity's **own thread** — a model's `Scheduler`, a
+  service's `Site`. So any logic subscribed to the change runs where all that entity's work runs — lock-free, on its
+  one thread. (The sketch above shows a model, hence `Scheduler`; a service emits `Site.Post`.)
 
 ### Model-side reaction to a knob change
 
@@ -152,10 +158,10 @@ protected void Handle_Reset() => Vbus = 0;
 // generator emits:  public void Reset() { Handle_Reset(); __ResetKnob?.RaiseChanged(); }
 ```
 
-Firing it from the MMI ([`Knob.Trigger`](#/api/type/SimulaSharp.Kernel.Knobs.Knob)) posts `Reset()` onto the model's
-site; the handler runs there, then every knob channel is notified — so a trigger *lights up* in the UI regardless of who
-fired it (operator, or the model calling `Reset()` directly). Triggers carry no `ValueType`, `ReadBoxed`, or
-`WriteBoxed`.
+Firing it from the MMI ([`Knob.Trigger`](#/api/type/SimulaSharp.Kernel.Knobs.Knob)) posts `Reset()` onto the owning
+entity's thread (a model's `Scheduler`, a service's `Site`); the handler runs there, then every knob channel is notified
+— so a trigger *lights up* in the UI regardless of who fired it (operator, or the entity calling `Reset()` directly).
+Triggers carry no `ValueType`, `ReadBoxed`, or `WriteBoxed`.
 
 ### A model exposing all four surfaces
 

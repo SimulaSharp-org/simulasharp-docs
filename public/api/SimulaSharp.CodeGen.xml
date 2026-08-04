@@ -18,10 +18,12 @@
         </member>
         <member name="T:SimulaSharp.CodeGen.KnobGenerator">
             <summary>
-            For every partial model with knob-decorated partial properties, implements them
+            For every partial model <b>or service</b> with knob-decorated partial properties, implements them
             (volatile get; volatile set + change-notify) and builds a <c>Knob</c> binder
             per knob via an explicit <c>IKnobProvider.CollectKnobs</c> the simulator calls during
-            discovery. v1 covers value knobs (Text/TickBox/Number&lt;T&gt;) plus trigger knobs.
+            discovery. Covers value knobs (Text/TickBox/Number&lt;T&gt;) plus trigger knobs. The MMI-facing writes and
+            triggers marshal onto the owner's thread through its dispatcher — a model's <c>Scheduler</c> or a service's
+            <c>Site</c> (the surface common to both sim-paced and loosely-coupled services).
             </summary>
         </member>
         <member name="M:SimulaSharp.CodeGen.KnobGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
