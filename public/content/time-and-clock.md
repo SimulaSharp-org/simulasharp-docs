@@ -46,9 +46,9 @@ operator interaction, where "faster than real time" would be meaningless or dang
 The clock is split by **capability**, so a model or service can *read and observe* time but never *control* it:
 
 - [`IClock`](#/api/type/SimulaSharp.Kernel.Services.IClock) — the **read/observe** view: `SimNowUs`, `MissionNowUs`,
-  `Now()`, `IsRunning`, and the `Started`/`Stopped` events. This is what a model's `TimeKeeper` and a service's
-  `TimeKeeper` are typed as. It has **no** `Start`/`Pause` — a model *cannot* freeze the simulation out from under its
-  peers.
+  `Now()`, `IsRunning`, the `Started`/`Stopped` events, and `SetMissionTimeProvider` (re-sources mission time — see
+  below). This is what a model's `TimeKeeper` and a service's `TimeKeeper` are typed as. It has **no** `Start`/`Pause` —
+  a model *cannot* freeze the simulation out from under its peers (re-sourcing mission time doesn't touch the horizon).
 - [`SimClock`](#/api/type/SimulaSharp.Kernel.Services.SimClock) — the concrete clock, which **adds control**
   (`Start`/`Pause`/`PauseAtSimUs`/`RunFor`) and `IDisposable`. The **simulator owns it**; the run's driver reaches
   control through the simulator ([`ISimulator.Start`/`Stop`/`RunFor`](#/api/type/SimulaSharp.Kernel.Services.ISimulator)).
@@ -84,19 +84,44 @@ by getting clean state for free from fresh instances.
 The clock exposes elapsed time and an absolute wall-clock instant, from the same horizon:
 
 - **`SimNowUs`** — elapsed simulation microseconds (the horizon). Starts at 0.
-- **`MissionNowUs`** — absolute mission time: a fixed **mission epoch** plus the horizon. The epoch is set once at
-  construction (the assembly's `MissionStart`, default the Unix epoch).
+- **`MissionNowUs`** — absolute mission time. By **default** it is a fixed **mission epoch** plus the horizon (the epoch
+  set once at construction from the assembly's `MissionStart`, default the Unix epoch) — so, like sim time, it is pinned
+  to real time. It can instead be **driven by a provider** (see below).
 
 Reading them separately can *tear* — two reads may straddle a horizon advance. When you need both consistently, take a
 single snapshot:
 
 ```csharp
-TimeSnapshot t = clock.Now();     // one horizon read → matched pair
-// t.SimTimeUs and t.MissionTimeUs are guaranteed consistent
+TimeSnapshot t = clock.Now();     // one horizon read → a coherent (sim, mission) pair
+// default source: t.MissionTimeUs == epoch + t.SimTimeUs; with a provider, both are sampled together (see below)
 ```
 
 [`TimeSnapshot`](#/api/type/SimulaSharp.Kernel.Primitives.TimeSnapshot) is what the logging layer and the plottable
 sweep use so every stamped record is internally consistent.
+
+### Mission time can be provider-driven
+
+Mission time is the one clock you can **re-source at runtime**. A component installs an
+[`IMissionTimeProvider`](#/api/type/SimulaSharp.Kernel.Services.IMissionTimeProvider) via
+[`IClock.SetMissionTimeProvider`](#/api/type/SimulaSharp.Kernel.Services.IClock), and from then on `MissionNowUs` (and
+the mission field of `Now()`) return **that** provider's value instead of `epoch + horizon`. Pass `null` to revert to
+the default.
+
+This exists because mission time and *real* time aren't always the same. Sim time is hard 1:1 and never warps — but a
+mission clock might be **fast-forwarded between events**, e.g. an FES / HIL rig that skips ahead between ground-station
+passes. Installing that rig's clock as the provider makes every component's mission time — uptime counters, RTCs,
+mission-stamped telemetry — track the *mission* rather than the wall clock, with **no model changes**: models keep
+reading `MissionNowUs` off the `IClock` they already hold.
+
+```csharp
+// inside the authority service (e.g. an FES service), once its clock is ready:
+public override void Configure() => TimeKeeper.SetMissionTimeProvider(_fesClock);   // _fesClock : IMissionTimeProvider
+```
+
+The provider's `MissionNowUs` is read **cross-thread** on every mission-time access (any site, plus the plot sweep), so
+it must be cheap and non-blocking — typically a `Volatile.Read` of a value the authority keeps current (optionally
+interpolated from `SimNowUs`). One consequence: with a provider installed, **sim and mission become independent clocks** —
+`Now()` still returns a coherent snapshot of both, but mission is no longer `epoch + sim`.
 
 ## Bounded runs: `RunFor` and `PauseAtSimUs`
 
@@ -132,6 +157,7 @@ bounded by the spin granularity (sub-microsecond to a few µs).
 |---|---|
 | Read "what time is it now?" inside a model | `Clock.SimNowUs` (or `TimeKeeper.SimNowUs` on `ModelBase`) |
 | Stamp an event with wall-clock/mission time | `Clock.MissionNowUs`, or `Clock.Now()` for a consistent pair |
+| Drive mission time from an external / fast-forwarded clock | install an `IMissionTimeProvider` via `Clock.SetMissionTimeProvider(...)` |
 | Start / freeze / resume a run | `Start()` / `Pause()` on the simulator (which drives the clock) |
 | Run for a bounded span then stop (scripts, tests) | `RunFor(durationUs)` |
 | Run a scenario again | build a **new** simulator (no reset) |

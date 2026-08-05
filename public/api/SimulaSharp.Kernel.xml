@@ -1625,19 +1625,35 @@
             read it here and may subscribe to <see cref="E:SimulaSharp.Kernel.Services.IClock.Started"/>/<see cref="E:SimulaSharp.Kernel.Services.IClock.Stopped"/>. Time never runs
             faster or slower than real time. Control (start/pause/run-for) and disposal live on the concrete
             <see cref="T:SimulaSharp.Kernel.Services.SimClock"/>, owned by the simulator — so a model cannot pause time or dispose the clock.
+            (A component may, however, install a <see cref="T:SimulaSharp.Kernel.Services.IMissionTimeProvider"/> via
+            <see cref="M:SimulaSharp.Kernel.Services.IClock.SetMissionTimeProvider(SimulaSharp.Kernel.Services.IMissionTimeProvider)"/>: that re-points the mission-time label without touching the horizon.)
             </summary>
         </member>
         <member name="P:SimulaSharp.Kernel.Services.IClock.SimNowUs">
             <summary>Elapsed simulation time in microseconds (the volatile horizon).</summary>
         </member>
         <member name="P:SimulaSharp.Kernel.Services.IClock.MissionNowUs">
-            <summary>Absolute mission time in microseconds (mission epoch + <see cref="P:SimulaSharp.Kernel.Services.IClock.SimNowUs"/>).</summary>
+            <summary>
+            Absolute mission time in microseconds. By default this is the mission epoch + <see cref="P:SimulaSharp.Kernel.Services.IClock.SimNowUs"/>
+            (mission time pinned to real time); when an <see cref="T:SimulaSharp.Kernel.Services.IMissionTimeProvider"/> is installed via
+            <see cref="M:SimulaSharp.Kernel.Services.IClock.SetMissionTimeProvider(SimulaSharp.Kernel.Services.IMissionTimeProvider)"/> it is whatever that provider returns.
+            </summary>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.IClock.Now">
             <summary>
-            Captures sim time and mission time together from a single horizon read, so the
-            two are guaranteed consistent (unlike reading <see cref="P:SimulaSharp.Kernel.Services.IClock.SimNowUs"/> and
-            <see cref="P:SimulaSharp.Kernel.Services.IClock.MissionNowUs"/> in sequence).
+            Captures sim time (a single horizon read) together with mission time. With the default provider the pair is
+            consistent (mission = epoch + sim); with a custom <see cref="T:SimulaSharp.Kernel.Services.IMissionTimeProvider"/> installed, mission comes
+            from that provider — sim and mission are then independent clocks sampled together, not one derived from the other.
+            </summary>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.IClock.SetMissionTimeProvider(SimulaSharp.Kernel.Services.IMissionTimeProvider)">
+            <summary>
+            Installs (or clears, when <paramref name="provider"/> is null) the <see cref="T:SimulaSharp.Kernel.Services.IMissionTimeProvider"/> that
+            backs <see cref="P:SimulaSharp.Kernel.Services.IClock.MissionNowUs"/> and the mission field of <see cref="M:SimulaSharp.Kernel.Services.IClock.Now"/>. With no provider the framework
+            default applies (mission epoch + horizon — mission time pinned to real time). Set it from within the
+            simulation — e.g. an FES service in its <c>Configure()</c> — to make an external or fast-forwarded clock the
+            mission time every component reads. Thread-safe: a single volatile reference swap. Unlike start/pause it does
+            <b>not</b> touch <see cref="P:SimulaSharp.Kernel.Services.IClock.SimNowUs"/> or the horizon's advance; it only re-points the mission-time label.
             </summary>
         </member>
         <member name="P:SimulaSharp.Kernel.Services.IClock.IsRunning">
@@ -1703,6 +1719,25 @@
             Called by the clock thread once the horizon reaches <see cref="P:SimulaSharp.Kernel.Services.IHorizonWaiter.NextWakeUs"/>: clears the request
             (so it is not signalled again) and releases the site's run loop.
             </summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Services.IMissionTimeProvider">
+            <summary>
+            A pluggable provider of <b>mission time</b> for a clock. Installed via
+            <see cref="M:SimulaSharp.Kernel.Services.IClock.SetMissionTimeProvider(SimulaSharp.Kernel.Services.IMissionTimeProvider)"/>; once set, the clock's <see cref="P:SimulaSharp.Kernel.Services.IClock.MissionNowUs"/> and the
+            mission field of <see cref="M:SimulaSharp.Kernel.Services.IClock.Now"/> report what it returns, instead of the framework default (mission
+            epoch + horizon). This lets an authority inside the simulation — e.g. an FES service whose mission clock is
+            fast-forwarded between ground-station passes — drive the mission time every model and service reads, so
+            uptime / RTC values track that clock rather than real (sim) time.
+            <para>
+            <see cref="P:SimulaSharp.Kernel.Services.IMissionTimeProvider.MissionNowUs"/> is read <b>cross-thread</b>, on every mission-time read (any site's models, plus the
+            plot sweep), so an implementation must be cheap, non-blocking, and thread-safe — typically a single
+            <c>Volatile.Read</c> of a value the authority keeps up to date (optionally interpolated from
+            <see cref="P:SimulaSharp.Kernel.Services.IClock.SimNowUs"/>). The provider may be the authority itself, or a small holder the authority updates.
+            </para>
+            </summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Services.IMissionTimeProvider.MissionNowUs">
+            <summary>The current absolute mission time in microseconds. Called on any thread; must be non-blocking.</summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Services.IScheduler">
             <summary>
@@ -1950,7 +1985,14 @@
             </summary>
         </member>
         <member name="F:SimulaSharp.Kernel.Services.SimClock._missionEpochUs">
-            <summary>Mission epoch as microseconds since the Unix epoch (constant).</summary>
+            <summary>Mission epoch as microseconds since the Unix epoch (constant) — the default mission anchor.</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Services.SimClock._missionProvider">
+            <summary>
+            The installed mission-time provider, or null for the framework default (<see cref="F:SimulaSharp.Kernel.Services.SimClock._missionEpochUs"/> +
+            horizon). A <c>volatile</c> reference so an authority (e.g. an FES service) can swap it in from another
+            thread and every reader observes it immediately.
+            </summary>
         </member>
         <member name="F:SimulaSharp.Kernel.Services.SimClock._sw">
             <summary>Measures real time elapsed within the current running segment.</summary>
@@ -2013,6 +2055,9 @@
             <inheritdoc/>
         </member>
         <member name="M:SimulaSharp.Kernel.Services.SimClock.Now">
+            <inheritdoc/>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Services.SimClock.SetMissionTimeProvider(SimulaSharp.Kernel.Services.IMissionTimeProvider)">
             <inheritdoc/>
         </member>
         <member name="P:SimulaSharp.Kernel.Services.SimClock.IsRunning">
