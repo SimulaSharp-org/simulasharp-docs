@@ -48,9 +48,9 @@ binder.
 > `Scheduler` or a service's `Site`, each being that entity's own thread. For a loosely-coupled service the `Site` is
 > a serial executor, so a trigger runs *best-effort* when the dispatcher is free — keep trigger handlers non-blocking.
 
-### The five attributes
+### The six attributes
 
-There are five knob attributes. Four sit on a `partial` **property** and expose a value; one sits on a **method** and
+There are six knob attributes. Five sit on a `partial` **property** and expose a value; one sits on a **method** and
 exposes a trigger. All of them derive from
 [`KnobAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.KnobAttribute) and share two options: **`Label`** (the
 display text) and **`IsReadOnly`** (display-only vs. read/write).
@@ -60,6 +60,7 @@ display text) and **`IsReadOnly`** (display-only vs. read/write).
 | `[TickBoxKnob("…")]` | `partial bool` property | `Bool` | — |
 | `[NumberKnob<T>("…")]` | `partial` numeric property | `Number` | `Min`, `Max` (`T`), `DecimalPlaces` (default 2; no-op for integer `T`), `KnobType` |
 | `[TextKnob("…")]` | `partial string` property | `Text` | `MaxLength` (default `int.MaxValue`), `AllowEmpty` (default `true`), `AllowNewLine` (default `false`) |
+| `[EnumKnob("…")]` | `partial` **enum** property | `Enum` | options come from the enum's members — see [Enum knobs](#enum-knobs-dropdowns) |
 | `[TriggerKnob("…")]` | `void Handle_X()` method | `Trigger` | — |
 
 `KnobType` is a [`NumberKnobType`](#/api/type/SimulaSharp.Kernel.Attributes.NumberKnobType) — `Input` (a plain field),
@@ -162,6 +163,25 @@ Firing it from the MMI ([`Knob.Trigger`](#/api/type/SimulaSharp.Kernel.Knobs.Kno
 entity's thread (a model's `Scheduler`, a service's `Site`); the handler runs there, then every knob channel is notified
 — so a trigger *lights up* in the UI regardless of who fired it (operator, or the entity calling `Reset()` directly).
 Triggers carry no `ValueType`, `ReadBoxed`, or `WriteBoxed`.
+
+### Enum knobs (dropdowns)
+
+`[EnumKnob("…")]` on a `partial` **enum** property renders as a **dropdown**. You don't list the choices — the
+generator discovers the enum's members and puts them on the knob as
+[`Options`](#/api/type/SimulaSharp.Kernel.Knobs.Knob), each an underlying integer value plus its name:
+
+```csharp
+public enum Polarisation { RHCP, LHCP }
+[EnumKnob("Polarisation")] public partial Polarisation Pol { get; set; }
+// Options → [ (0, "RHCP"), (1, "LHCP") ]; a renderer builds <option value="0">RHCP</option>, …
+```
+
+The knob's value is the selected **underlying integer**, exchanged as `long` (matching
+[`KnobOption.Value`](#/api/type/SimulaSharp.Kernel.Knobs.KnobOption)) — so a generic MMI never needs your enum type; it
+reads the current value, matches it to an option for the label, and writes back the chosen option's value. Under the
+hood the value is stored in the enum's underlying-integer field (a `Volatile` read/write can't take an enum directly),
+and your model still reads and writes the typed enum property as usual. `[EnumKnob]` on a non-enum property is a build
+error, [`SIM030`](#/guide/assembly-yaml-reference).
 
 ### A model exposing all four surfaces
 

@@ -203,6 +203,24 @@
             and as a plain light indicator in RO mode.
             </remarks>
         </member>
+        <member name="T:SimulaSharp.Kernel.Attributes.EnumKnobAttribute">
+            <summary>
+            Decorates a model or service member of an <b>enum</b> type to be exposed as a <b>dropdown</b> knob. The generator
+            discovers the enum's members and offers them as the selectable options — each an underlying integer value plus its
+            name — and the knob's value is the selected underlying value. In ReadOnly mode it is an indicator of the current
+            member; in Read/Write mode a dropdown the operator (and the model) can change.
+            </summary>
+            <param name="label">The knob label.</param>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Attributes.EnumKnobAttribute.#ctor(System.String)">
+            <summary>
+            Decorates a model or service member of an <b>enum</b> type to be exposed as a <b>dropdown</b> knob. The generator
+            discovers the enum's members and offers them as the selectable options — each an underlying integer value plus its
+            name — and the knob's value is the selected underlying value. In ReadOnly mode it is an indicator of the current
+            member; in Read/Write mode a dropdown the operator (and the model) can change.
+            </summary>
+            <param name="label">The knob label.</param>
+        </member>
         <member name="T:SimulaSharp.Kernel.Attributes.NumberKnobType">
             <summary>How a numeric knob is presented in the UI.</summary>
         </member>
@@ -698,6 +716,9 @@
         <member name="P:SimulaSharp.Kernel.Knobs.Knob.AllowNewLine">
             <summary>Whether a text knob permits newlines.</summary>
         </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.Knob.Options">
+            <summary>For an <see cref="F:SimulaSharp.Kernel.Knobs.KnobKind.Enum"/> knob: the selectable options (underlying value + label). Null otherwise.</summary>
+        </member>
         <member name="P:SimulaSharp.Kernel.Knobs.Knob.ReadBoxed">
             <summary>Typed volatile read of the value, boxed. Null for triggers.</summary>
         </member>
@@ -740,6 +761,35 @@
         </member>
         <member name="F:SimulaSharp.Kernel.Knobs.KnobKind.Trigger">
             <summary>A method trigger (no value).</summary>
+        </member>
+        <member name="F:SimulaSharp.Kernel.Knobs.KnobKind.Enum">
+            <summary>An enumerated value chosen from a fixed set (dropdown); see the knob's <c>Options</c>.</summary>
+        </member>
+        <member name="T:SimulaSharp.Kernel.Knobs.KnobOption">
+            <summary>
+            One selectable option of an <see cref="F:SimulaSharp.Kernel.Knobs.KnobKind.Enum"/> (dropdown) knob: an enum member's underlying integer
+            <see cref="P:SimulaSharp.Kernel.Knobs.KnobOption.Value"/> and its <see cref="P:SimulaSharp.Kernel.Knobs.KnobOption.Label"/> (the member name). A renderer builds each as
+            <c>&lt;option value="{Value}"&gt;{Label}&lt;/option&gt;</c>; the knob's read/written value is the selected
+            <see cref="P:SimulaSharp.Kernel.Knobs.KnobOption.Value"/>. Values are widened to <see cref="T:System.Int64"/> so one shape covers every integer underlying type.
+            </summary>
+            <param name="Value">The enum member's underlying integer value.</param>
+            <param name="Label">The enum member's name.</param>
+        </member>
+        <member name="M:SimulaSharp.Kernel.Knobs.KnobOption.#ctor(System.Int64,System.String)">
+            <summary>
+            One selectable option of an <see cref="F:SimulaSharp.Kernel.Knobs.KnobKind.Enum"/> (dropdown) knob: an enum member's underlying integer
+            <see cref="P:SimulaSharp.Kernel.Knobs.KnobOption.Value"/> and its <see cref="P:SimulaSharp.Kernel.Knobs.KnobOption.Label"/> (the member name). A renderer builds each as
+            <c>&lt;option value="{Value}"&gt;{Label}&lt;/option&gt;</c>; the knob's read/written value is the selected
+            <see cref="P:SimulaSharp.Kernel.Knobs.KnobOption.Value"/>. Values are widened to <see cref="T:System.Int64"/> so one shape covers every integer underlying type.
+            </summary>
+            <param name="Value">The enum member's underlying integer value.</param>
+            <param name="Label">The enum member's name.</param>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.KnobOption.Value">
+            <summary>The enum member's underlying integer value.</summary>
+        </member>
+        <member name="P:SimulaSharp.Kernel.Knobs.KnobOption.Label">
+            <summary>The enum member's name.</summary>
         </member>
         <member name="T:SimulaSharp.Kernel.Logging.ComponentLogger">
             <summary>

@@ -29,6 +29,12 @@
         <member name="M:SimulaSharp.CodeGen.KnobGenerator.Initialize(Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext)">
             <inheritdoc/>
         </member>
+        <member name="M:SimulaSharp.CodeGen.KnobGenerator.Underlying(Microsoft.CodeAnalysis.IPropertySymbol)">
+            <summary>The fully-qualified underlying integer type of an enum property (e.g. <c>int</c>).</summary>
+        </member>
+        <member name="M:SimulaSharp.CodeGen.KnobGenerator.AppendOptions(System.Text.StringBuilder,Microsoft.CodeAnalysis.IPropertySymbol)">
+            <summary>Emits the <c>Options</c> initializer for an enum knob: one <c>KnobOption(underlyingValue, "Name")</c> per member.</summary>
+        </member>
         <member name="T:SimulaSharp.CodeGen.LocalReferenceGenerator">
             <summary>
             For every model decorated with <c>[Reference&lt;T&gt;("Name")]</c> (an <b>intra-site</b> reference), emits the

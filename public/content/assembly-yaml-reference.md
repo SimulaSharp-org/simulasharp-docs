@@ -2,7 +2,7 @@
 
 The **assembly** is the YAML file that names your sites, services, and the model tree, and wires them together.
 The generator parses it (with YamlDotNet), validates it against your real types, and emits a
-`<Name>Simulator`. This page is the exhaustive schema plus the complete `SIM001`–`SIM029` diagnostics table. For
+`<Name>Simulator`. This page is the exhaustive schema plus the complete `SIM001`–`SIM030` diagnostics table. For
 the concepts, read **[the assembly](#/guide/the-assembly)**.
 
 Register the file by tagging it `<SimAssembly Include="…" />` in your csproj (any name — the `.simassembly.yaml`
@@ -116,7 +116,7 @@ Each node describes one model instance and its subtree.
 fields. See **[models & containment](#/guide/models-and-containment)**, **[associations](#/guide/associations)**, and
 **[global events](#/guide/events)**.
 
-## Diagnostics — SIM001–SIM029
+## Diagnostics — SIM001–SIM030
 
 Every problem is a **build error** (except SIM016, a **warning**). On any error the simulator is **not emitted**,
 so there is no cascade — fix the reported id and rebuild.
@@ -152,9 +152,11 @@ so there is no cascade — fix the reported id and rebuild.
 | **SIM027** | Invalid event reference. | The `Triggers` member isn't `[EventReference]`, or isn't typed as the matching `ISimEventInvocator` / `ISimEventInvocator<T>`. |
 | **SIM028** | Invalid event type. | A custom `Type` doesn't implement `ISimEvent<…>`, or disagrees with the declared `ArgType` — align the type and its argument. |
 | **SIM029** | Model or service is not `partial`. | A class implementing `IModel`/`IService` must be declared `partial` so the framework can generate its parameter and wiring code — add the `partial` modifier. |
+| **SIM030** | `[EnumKnob]` is not on an enum. | An `[EnumKnob]` member must be a property of an enum type — use an enum, or a different knob attribute for a non-enum value. |
 
 > SIM001–SIM019 come from the simulator/reference generators; SIM020 from the plottable generator; SIM021 from the
 > reference generator; SIM022 from the service generator; SIM023–SIM028 from the simulator generator (global-event
-> wiring); SIM029 from the parameter generator (the `partial` requirement).
+> wiring); SIM029 from the parameter generator (the `partial` requirement); SIM030 from the knob generator (`[EnumKnob]`
+> must be an enum).
 
 With a clean assembly, you have a runnable simulator — see **[Build, run & test](#/guide/build-run-test)**.

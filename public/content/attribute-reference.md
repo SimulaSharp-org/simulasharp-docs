@@ -22,6 +22,7 @@ of `Bool` / `Number` / `Text` / `Trigger`.
 | [`TextKnobAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.TextKnobAttribute) | `partial` property (string) | `MaxLength` (int, def `int.MaxValue`), `AllowEmpty` (def `true`), `AllowNewLine` (def `false`) | A text field (RW) or label (RO). `AllowNewLine` renders a text area. Kind `Text`. |
 | [`TickBoxKnobAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.TickBoxKnobAttribute) | `partial` property (bool) | *(label only)* | A checkbox (RW) or light indicator (RO). Kind `Bool`. |
 | [`NumberKnobAttribute<T>`](#/api/type/SimulaSharp.Kernel.Attributes.NumberKnobAttribute`1) | `partial` property (numeric `T`) | `Min`/`Max` (`T`), `DecimalPlaces` (uint, def `2`; no-op for integer `T`), `KnobType` (`NumberKnobType`, def `Input`) | A numeric input/slider/rotary bounded by `Min`/`Max`, for any numeric `T` (integer or floating-point). Kind `Number`. |
+| [`EnumKnobAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.EnumKnobAttribute) | `partial` property (enum) | *(label only)* | A dropdown of the enum's members; the generator supplies the `Options` (underlying value + name). Kind `Enum`. Non-enum target → `SIM030`. |
 | [`TriggerKnobAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.TriggerKnobAttribute) | **method** `Handle_X` | *(label only)* | A button that invokes the method (RW) or a light that flashes when it fires (RO). Kind `Trigger`. |
 
 [`NumberKnobType`](#/api/type/SimulaSharp.Kernel.Attributes.NumberKnobType) = `Input` (plain field) · `Slider`
