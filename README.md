@@ -67,10 +67,10 @@ The API pages are parsed from the .NET XML doc files. To refresh them after code
 
 ```powershell
 # 1) build the libraries (they emit <Assembly>.xml because GenerateDocumentationFile is on)
-dotnet build ..\Kernel\Kernel.csproj
-dotnet build ..\CodeGen\SimulaSharp.CodeGen.csproj
-dotnet build ..\Hosting\SimulaSharp.Hosting.csproj
+dotnet build ..\core\Kernel\Kernel.csproj
+dotnet build ..\core\CodeGen\SimulaSharp.CodeGen.csproj
+dotnet build ..\core\Hosting\SimulaSharp.Hosting.csproj
 
-# 2) collect the XML into the app
-pwsh -File scripts\collect-api-docs.ps1
+# 2) collect the XML into the app (-CorePath defaults to the sibling ..\core)
+pwsh -File scripts\collect-api-docs.ps1 -CorePath ..\core
 ```
