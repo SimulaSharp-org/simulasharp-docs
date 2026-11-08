@@ -1,8 +1,8 @@
 # SimulaSharp — Documentation
 
 A **Vite + React + TypeScript** documentation app: the definitive guide to **designing simulators** with
-SimulaSharp, plus the generated API reference. It is a **standalone Node project that ships inside this repo** — it
-is *not* a .NET project, is not part of any solution, and is invisible to `dotnet build`.
+SimulaSharp, plus the generated API reference. It is a **standalone Node project** in its own repo, next to the
+framework repo `simulasharp-core` — it is *not* a .NET project and is not part of any solution.
 
 It brings together, in one tree-navigated site:
 
@@ -25,8 +25,9 @@ Install **Node.js LTS** (includes npm) from <https://nodejs.org/en/download>.
 
 ## Serve it
 
+From the repo root:
+
 ```powershell
-cd docs
 .\serve.ps1              # Vite dev server (hot reload), http://localhost:8080, opens the browser
 .\serve.ps1 -Prod       # build, then serve the production build
 .\serve.ps1 -Port 8090  # different port
@@ -40,7 +41,7 @@ To build the deliverable without serving: `npm install && npm run build` → sta
 ## Layout
 
 ```
-docs/
+./
 ├─ index.html            # Vite entry
 ├─ src/                  # the React app
 │  ├─ App.tsx            # shell: sidebar (Guide · API) + routes
@@ -53,6 +54,7 @@ docs/
 │  └─ api-ns/            # out-of-code namespace overviews (<Namespace>.md)
 ├─ scripts/collect-api-docs.ps1
 ├─ serve.ps1 / serve.bat
+├─ LICENSE
 └─ README.md
 ```
 
@@ -63,7 +65,13 @@ docs/
 
 ## Regenerate the API reference
 
-The API pages are parsed from the .NET XML doc files. To refresh them after code/doc-comment changes:
+The API pages are parsed from the .NET XML doc files, which are built from the framework repo `simulasharp-core`. The collect script expects that repo as a sibling folder named `core` by default; clone it under that name, or pass its location with `-CorePath`:
+
+```powershell
+git clone git@github.com:SimulaSharp-org/simulasharp-core.git ..\core
+```
+
+To refresh the API pages after code/doc-comment changes:
 
 ```powershell
 # 1) build the libraries (they emit <Assembly>.xml because GenerateDocumentationFile is on)
@@ -74,3 +82,7 @@ dotnet build ..\core\Hosting\SimulaSharp.Hosting.csproj
 # 2) collect the XML into the app (-CorePath defaults to the sibling ..\core)
 pwsh -File scripts\collect-api-docs.ps1 -CorePath ..\core
 ```
+
+## License
+
+MIT. Copyright (c) 2026 Andreas Michelis. See [LICENSE](LICENSE).
