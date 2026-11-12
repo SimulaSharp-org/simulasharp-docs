@@ -18,6 +18,7 @@ Simulator:
   Services:
     - Name: Tracker                    # instance name (referenced by Deps)
       Type: Demo.DemoService           # fully-qualified type (must implement IService)
+      # Deps / Triggers / Subscriptions  # optional, same shapes as on a model node
       # Config: { … }                  # optional [Parameter] values for the service
 
   Events:
@@ -37,9 +38,10 @@ Simulator:
                 - Name: UnitA
                   Type: Demo.Unit
                   Config: { Rate: 1.5 }
-                  Refs:                # intra-site [Reference<T>] entries; use CRefs: for [CrossReference<T>]
+                  Refs:                # intra-site [Reference<T>] entries
                     - Peers:           # <referenceField>: [ dotted instance paths ]
                         - Plant.Plant1.UnitB
+                  # CRefs:             # cross-site [CrossReference<T>] entries, same shape as Refs
                 - Name: UnitB
                   Type: Demo.Unit
                   Config: { Rate: 2.5 }
@@ -52,7 +54,12 @@ Simulator:
 ```
 
 The full **instance path** is the dotted chain from the simulator name down: `Plant.Plant1.UnitA`. Paths must be
-unique and are what `Refs` target.
+unique and are what `Refs` and `CRefs` target.
+
+Every `Type`, `ArgType` and event `Type` is resolved by its **metadata name** (as `Compilation.GetTypeByMetadataName`
+reads it): the namespace-qualified name, `System.Double` rather than `double`, and `Outer+Inner` for a nested type.
+Keys the generator does not know are **ignored silently** (the YAML is read with unmatched properties ignored), so a
+misspelled block name such as `Ref:` produces no error and simply wires nothing.
 
 ## `Simulator`
 
@@ -69,7 +76,7 @@ unique and are what `Refs` target.
 | Field | Required | Default | Meaning |
 |---|---|---|---|
 | `Name` | **yes** | — | Instance name; referenced from a model's or another service's `Deps`. |
-| `Type` | **yes** | — | Fully-qualified type; must implement `IService` and have a `(IClock, ILogger)` ctor. |
+| `Type` | **yes** | — | Fully-qualified type; must implement `IService` and have a public `(IClock, ILogger)` ctor. A `LooselyCoupledServiceBase` is declared the same way (the generator registers it through its own entry point). |
 | `Config` | no | *(none)* | Map of `[Parameter]` key → scalar for the service (optional; an omitted key uses the parameter's attribute default). |
 | `Deps` | no | *(none)* | **Service→service deps.** Same shape as a model's `Deps` — a list of `{ <serviceRefMember>: serviceName }` binding a `[ServiceRef]` member to another service. Cycles are allowed (A→B and B→A): every service is constructed before any dep is bound. |
 | `Triggers` | no | *(none)* | **Event producers.** Same shape as a model's `Triggers` — a service can hold an `[EventReference]` and fire a global event. |
@@ -83,7 +90,7 @@ wired via a model's or service's `Triggers`, consumers via a model's or service'
 
 | Field | Required | Default | Meaning |
 |---|---|---|---|
-| `Name` | **yes** | — | Instance name; referenced from a model's `Triggers` and `Subscriptions`. |
+| `Name` | **yes** | — | Instance name; referenced from a model's or service's `Triggers` and `Subscriptions`. |
 | `ArgType` | no | *(none — argless)* | Fully-qualified payload type. Omit for an argless event (`SimEvent`); supply it for a typed event (`SimEvent<ArgType>`). |
 | `Type` | no | `SimEvent` / `SimEvent<ArgType>` | Fully-qualified custom event type; must implement `ISimEvent<…>` and agree with `ArgType`. Omit for the stock, logic-free event. |
 
@@ -92,7 +99,7 @@ wired via a model's or service's `Triggers`, consumers via a model's or service'
 | Field | Required | Default | Meaning |
 |---|---|---|---|
 | `Name` | **yes** | — | Site name. |
-| `MaxEvents` | no | `64` | Capacity of the site's event queue. |
+| `MaxEvents` | no | `64` | Capacity of the site's event queue (passed to `CreateSite(name, maxEvents)`). |
 | `Models` | no | *(none)* | The **root model nodes** owned by this site. |
 
 ## Model node
@@ -102,8 +109,8 @@ Each node describes one model instance and its subtree.
 | Field | Required | Default | Meaning |
 |---|---|---|---|
 | `Name` | **yes** | — | Instance name; a segment of the dotted path. |
-| `Type` | **yes** | — | Fully-qualified type; must implement `IModel` and have a `(IClock, IScheduler, ILogger)` ctor. |
-| `Config` | no | *(none)* | Map of `[Parameter]` key → scalar (optional; an omitted key uses the parameter's attribute default, or errors if the parameter is `Required`). |
+| `Type` | **yes** | — | Fully-qualified type; must implement `IModel` and have a public `(IClock, IScheduler, ILogger)` ctor. |
+| `Config` | no | *(none)* | Map of `[Parameter]` key → scalar (optional; an omitted key uses the parameter's attribute default, or — for a `Required` parameter — makes the simulator's constructor throw `InvalidOperationException`). |
 | `Models` | no | *(none)* | **Containment.** A list of `{ <containerName>: [ child nodes ] }`; each key names a `[Contains<T>]` container on this type. |
 | `Refs` | no | *(none)* | **Intra-site references.** A list of `{ <referenceName>: [ dotted.paths ] }`; each key names a `[Reference<T>]` (same-site) on this type, each value a target instance path. |
 | `CRefs` | no | *(none)* | **Cross-site references.** A list of `{ <referenceName>: [ dotted.paths ] }`; each key names a `[CrossReference<T>]` (may cross sites) on this type, each value a target instance path. |
@@ -111,7 +118,8 @@ Each node describes one model instance and its subtree.
 | `Triggers` | no | *(none)* | **Event producers.** A list of `{ <eventReferenceMember>: eventName }` binding an `[EventReference]` member to a global event under `Events`. |
 | `Subscriptions` | no | *(none)* | **Event consumers.** A list of `{ <eventHandlerMethod>: eventName }` binding an `[EventHandler]` method to a global event under `Events`. |
 
-`Config` values are scalars (numbers, strings, bools) bound into `[Parameter]` members.
+`Config` values are scalars (numbers, strings, bools, chars, enum member names) bound into `[Parameter]` members. The
+key is the parameter's `Key` (default: the member name); the text is parsed with the invariant culture.
 `Models`/`Refs`/`CRefs`/`Deps`/`Triggers`/`Subscriptions` are lists of single-key maps so one node can populate several
 fields. See **[models & containment](#/guide/models-and-containment)**, **[associations](#/guide/associations)**, and
 **[global events](#/guide/events)**.
@@ -127,8 +135,8 @@ so there is no cascade — fix the reported id and rebuild.
 | **SIM002** | Missing `Simulator.Name`. | Add a non-empty `Name:` under `Simulator:`. |
 | **SIM003** | Duplicate instance path. | Rename so every dotted instance path is unique. |
 | **SIM004** | Unknown type. | The `Type` couldn't be found — use the fully-qualified name and ensure the type is referenced/compiled. |
-| **SIM005** | Wrong component kind. | The type doesn't implement the expected interface — a model must be `IModel`, a service `IService`. |
-| **SIM006** | Missing required constructor. | Give the type the ctor the framework calls: models `(IClock, IScheduler, ILogger)`, services `(IClock, ILogger)`. |
+| **SIM005** | Wrong component kind. | The type doesn't implement the expected interface — a root model must be `IModel`, a service `IService` (a contained child gets SIM009 instead). |
+| **SIM006** | Missing required constructor. | Give the type the **public** ctor the framework calls: models `(IClock, IScheduler, ILogger)`, services `(IClock, ILogger)`. |
 | **SIM007** | Unknown container name. | The `Models` key doesn't name a `[Contains<T>]` container on the type — check the name against the attribute. |
 | **SIM008** | Container element-type mismatch. | A contained child isn't assignable to the container's `T` — fix the child `Type` or the `[Contains<T>]`. |
 | **SIM009** | Contained child is not a model. | A child under `Models` doesn't implement `IModel` — only models can be contained. |
@@ -138,7 +146,7 @@ so there is no cascade — fix the reported id and rebuild.
 | **SIM013** | Invalid `[ServiceRef]` dependency member. | The `Deps` key doesn't name a `[ServiceRef]` member on the type — check the member and its attribute. |
 | **SIM014** | Unknown service. | The dependency names a service not declared under `Services` — add it or fix the name. |
 | **SIM015** | Service type mismatch. | The named service isn't assignable to the `[ServiceRef]` member — bind a compatible service. |
-| **SIM016** | Unknown config key *(warning)*. | A `Config` key has no matching `[Parameter]` member — remove it, or add/rename the member. |
+| **SIM016** | Unknown config key *(warning)*. | A `Config` key has no matching `[Parameter]` member (matched by its `Key`, else the member name) — remove it, or add/rename the member. |
 | **SIM017** | Intra-site reference crosses a site. | A `Refs` (`[Reference<T>]`) target is on a different site — move it, or use `CRefs` (`[CrossReference<T>]`) for a cross-site link. |
 | **SIM018** | Cross-reference target is not an interface. | A `[CrossReference<T>]` must target an interface — introduce a capability interface for the boundary. |
 | **SIM019** | `[Triggerable]` method is not `void`. | A `[Triggerable]` interface method must return `void` (fire-and-forget has no result). |
@@ -148,15 +156,16 @@ so there is no cascade — fix the reported id and rebuild.
 | **SIM023** | Unknown event. | A `Subscriptions`/`Triggers` entry names an event not declared under `Events:` — add it or correct the name. |
 | **SIM024** | Invalid event handler. | The `Subscriptions` method is missing, not `[EventHandler]`, or not `void` — mark a `void` method with `[EventHandler]`. |
 | **SIM025** | Handler signature mismatch. | Wrong arity/payload — an argless event needs a 0-parameter handler; a typed event needs a single parameter the payload is assignable to. |
-| **SIM026** | Wrong subscriber type. | The subscriber isn't assignable to the event's `TSub` — the stock event accepts all (`object`); a custom event's `TSub` may be narrower. |
+| **SIM026** | Wrong subscriber type. | The subscribing model or service isn't assignable to the event's `TSub` — the stock event accepts all (`object`); a custom event's `TSub` may be narrower. |
 | **SIM027** | Invalid event reference. | The `Triggers` member isn't `[EventReference]`, or isn't typed as the matching `ISimEventInvocator` / `ISimEventInvocator<T>`. |
-| **SIM028** | Invalid event type. | A custom `Type` doesn't implement `ISimEvent<…>`, or disagrees with the declared `ArgType` — align the type and its argument. |
+| **SIM028** | Invalid event type. | The `ArgType` or custom `Type` can't be found, the `Type` doesn't implement `ISimEvent<…>`, or it disagrees with the declared `ArgType` — align the type and its argument. |
 | **SIM029** | Model or service is not `partial`. | A class implementing `IModel`/`IService` must be declared `partial` so the framework can generate its parameter and wiring code — add the `partial` modifier. |
 | **SIM030** | `[EnumKnob]` is not on an enum. | An `[EnumKnob]` member must be a property of an enum type — use an enum, or a different knob attribute for a non-enum value. |
 
-> SIM001–SIM019 come from the simulator/reference generators; SIM020 from the plottable generator; SIM021 from the
-> reference generator; SIM022 from the service generator; SIM023–SIM028 from the simulator generator (global-event
-> wiring); SIM029 from the parameter generator (the `partial` requirement); SIM030 from the knob generator (`[EnumKnob]`
-> must be an enum).
+> SIM001–SIM018 and SIM023–SIM028 come from the simulator generator (the assembly validator); SIM019 and SIM021 from
+> the Ref generator (cross-reference interface members); SIM020 from the plottable generator; SIM022 from the service
+> generator; SIM029 from the parameter generator (the `partial` requirement); SIM030 from the knob generator
+> (`[EnumKnob]` must be an enum). Only the validator's errors stop the simulator from being emitted; the others fail the
+> build like any compile error.
 
 With a clean assembly, you have a runnable simulator — see **[Build, run & test](#/guide/build-run-test)**.

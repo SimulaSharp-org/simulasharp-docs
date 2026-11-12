@@ -10,7 +10,7 @@ stateDiagram-v2
   [*] --> Initialized: new <Name>Simulator() — assemble tree, wire, apply params, discover knobs/plottables/params
   Initialized --> Configured: Configure() — services' then models' Configure()
   Configured --> Running: Start() — start every site, then the clock
-  Running --> Running: Stop() freezes (IsRunning=false) / Start() resumes
+  Running --> Running: Stop() freezes (IsRunning=false) / Start() resumes / RunFor(us) runs a bounded segment
   Running --> [*]: Dispose() — cascade teardown, single-use
   Initialized --> [*]: Dispose()
   Configured --> [*]: Dispose()
@@ -26,13 +26,14 @@ simulator is already **Initialized** (assembled by its constructor); from there 
 
 | Step | Guard | What it does | State after |
 |---|---|---|---|
-| `new <Name>Simulator()` | — | The constructor **assembles**: constructs sites, services, and the model tree; applies parameters (assembly values + defaults); wires containment, deps, references; **discovers knobs, plottables & parameters**. | `Initialized` |
+| `new <Name>Simulator()` | — | The constructor **assembles**: constructs services, global events, sites, and the model tree; applies parameters (assembly values + defaults); wires containment, deps, events, references; **discovers knobs, plottables & parameters**. Throws `InvalidOperationException` if a `Required` parameter has no value. | `Initialized` |
 | `RegisterLogSink(sink)` | none — any time | Adds a log destination to the router; entries after it fan out to it. | *(unchanged)* |
 | `RegisterKnobChannel(ch)` | none — any time | Registers an MMI knob channel; attaches immediately (knobs are already discovered). | *(unchanged)* |
 | `GetParams()` / `SetParam(p, v)` | `SetParam` requires **not yet `Configured`** | Read every per-instance parameter; override a value before the run is fixed. | *(unchanged)* |
-| `Configure()` | requires `Initialized` | Runs every **service's** then every **model's** `Configure()`. | `Configured` |
+| `Configure()` | requires `Initialized` | Runs every **service's** `Configure()` (in declaration order), then every **model's** (in registration order — children before their parent, since the tree is built bottom-up). Runs on the calling thread. | `Configured` |
 | `Start()` | requires `Configured` | First call starts **every SimSite** thread; every call (re)starts the **clock**. | `Running` |
-| `Stop()` | none | **Pauses the clock** — freezes the horizon. State stays `Running`; `IsRunning` goes false. Resume with `Start()`. | `Running` (frozen) |
+| `Stop()` | none | **Pauses the clock** — freezes the horizon. State stays `Running`; `IsRunning` goes false. Resume with `Start()`. A no-op when the clock is not running. | `Running` (frozen) |
+| `RunFor(durationUs)` | none — call `Start()` first | Runs `durationUs` µs of sim time from now (still 1:1 with the wall clock), then freezes like `Stop()`, **blocking the caller** until it does. For scripted runs and tests. | `Running` (frozen) |
 | `Dispose()` | none | Tears everything down (see below). **Single-use — no reset.** | *(disposed)* |
 
 ### The guards
@@ -45,6 +46,10 @@ Two things throw `InvalidOperationException`:
 `Configure()` is **idempotent** — calling it again once past its state is a no-op. `Start()` is safe to call repeatedly
 too: it only starts the sites once (on the transition into `Running`), and thereafter each call just restarts the
 clock — which is exactly how **resume** works.
+
+`RunFor()` has **no guard**: it drives the clock directly. Called before `Start()`, it advances the clock but no site
+thread runs and the state does not move to `Running`. So always `Start()` first; `RunFor()` then runs one more bounded
+segment and freezes, and you can call it again to run the next one.
 
 > **Consequence for design.** Building happens in the **constructor**, so a freshly-`new`'d simulator is ready to
 > inspect — you can `GetParams()`/`SetParam()` before anything runs. Parameters are populated before `Configure()`, so
@@ -84,10 +89,14 @@ sequenceDiagram
   Sim->>Clock: Pause() (freeze; State stays Running)
   Host->>Sim: Start()
   Sim->>Clock: Start() (resume from frozen horizon)
+  Host->>Sim: RunFor(us)
+  Sim->>Clock: RunFor(us) — run, auto-pause, then return
   Host->>Sim: Dispose()
+  Sim->>Clock: Pause() (park the clock thread)
   Sim->>Sites: Stop() all site threads
   Sim->>Sim: dispose services, then models (reverse)
-  Sim->>Sites: dispose sites, then the clock
+  Sim->>Clock: Dispose() (join the clock thread)
+  Sim->>Sites: dispose the sites
 ```
 
 ---
@@ -101,7 +110,8 @@ clock thread must be fully stopped before a site's wait handle is disposed:
 1. **Pause the clock** — park its thread, so it stops waking sites (and the stop handlers run under control).
 2. **Stop every SimSite thread** — so no model code is running.
 3. **Dispose each service.**
-4. **Dispose each model, in reverse registration order** — children before parents, mirroring the depth-first build.
+4. **Dispose each model, in reverse registration order** — the bottom-up build registers children before their parent,
+   so a parent is disposed before its children (and the last-built site's tree first).
 5. **Dispose (join) the clock** — *before* the site handles, so no clock-thread wake can outlive them.
 6. **Dispose the sites** — safe now that nothing can wake them.
 
@@ -128,7 +138,7 @@ A host loop over the shared `ISimulator` surface:
 ```csharp
 using ISimulator sim = package.Create("Plant");   // a generated PlantSimulator, already assembled
 
-sim.RegisterLogSink(new ConsoleLogSink());         // any time — before or during the run
+sim.RegisterLogSink(new ConsoleSink());            // your ILogSink; any time — before or during the run
 sim.RegisterKnobChannel(mmiChannel);               // knobs are already discovered → attaches now
 
 foreach (var p in sim.GetParams())                 // inspect / tune before the run is fixed
@@ -144,13 +154,19 @@ var frame = sim.SamplePlottables();                // one mission-time-stamped s
 
 sim.Stop();         // freeze; State stays Running, IsRunning == false
 sim.Start();        // resume seamlessly from the frozen horizon
+sim.RunFor(1_000_000);   // run 1 s more of sim time, then freeze (blocks until then)
 
-// `using` disposes here — stop sites, dispose services, models (reverse), sites, clock.
+// `using` disposes here — pause the clock, stop sites, dispose services, models (reverse), clock, sites.
 // To run again: create a NEW simulator. There is no reset.
+
+sealed class ConsoleSink : ILogSink                  // the Kernel ships no sink; a host writes its own
+{
+    public void Submit(in LogEntry entry) => Console.WriteLine(entry);   // called from every site thread
+}
 ```
 
 Everything the host touches — `Clock`, `State`, `IsRunning`, `RegisterLogSink`, `Knobs`, `RegisterKnobChannel`,
-`Plottables`, `SamplePlottables`, `GetParams`/`SetParam`, and the lifecycle verbs — lives on `ISimulator` /
+`Plottables`, `SamplePlottables`, `GetParams`/`SetParam`, `RunFor`, and the lifecycle verbs — lives on `ISimulator` /
 `SimulatorBase`, **never on the generated subclass**. That is what lets the MMI drive any simulator it loads through one
 stable interface.
 
