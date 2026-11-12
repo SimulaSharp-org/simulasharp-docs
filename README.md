@@ -2,6 +2,8 @@
 
 # SimulaSharp — Documentation
 
+**Published at [simulasharp.net](https://simulasharp.net).**
+
 A **Vite + React + TypeScript** documentation app: the definitive guide to **designing simulators** with
 SimulaSharp, plus the generated API reference. It is a **standalone Node project** in its own repo, next to the
 framework repo `simulasharp-core` — it is *not* a .NET project and is not part of any solution.
