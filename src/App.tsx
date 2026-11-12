@@ -45,6 +45,8 @@ This is the **definitive guide to *designing* simulators** with SimulaSharp. It 
 - **Scenarios** — worked, end-to-end builds, from [hello-sim](#/guide/scenario-hello-sim) up to a
   [multi-subsystem satellite topology](#/guide/scenario-satellite).
 - **[API reference](#/api)** — generated from the code, browsable by namespace → type → member.
+- **[Source & packages](#/guide/source-and-packages)** — the GitHub repositories, the NuGet packages, and how to
+  report issues or contribute.
 
 New here? Start with the [introduction](#/guide/introduction) and [the big picture](#/guide/big-picture).
 
@@ -52,8 +54,8 @@ New here? Start with the [introduction](#/guide/introduction) and [the big pictu
 
 | Part | Role |
 |------|------|
-| **Kernel** | The runtime: the real-time \`SimClock\`, parallel single-threaded \`SimSite\`s, per-site event queues, coroutines, associations, knobs/plottables, logging. |
-| **CodeGen** | Roslyn source generators that turn annotated models + a YAML assembly into the wiring: the \`<Name>Simulator\`, \`<Type>Ref\` accessors, knob/plottable binders, config binding. |
+| **Kernel** | The runtime: the real-time \`SimClock\`, parallel single-threaded \`SimSite\`s, per-site event queues, coroutines, services, global events, associations, knobs/plottables/parameters, logging. |
+| **CodeGen** | Roslyn source generators that turn annotated models + a YAML assembly into the wiring: the \`<Name>Simulator\`, the \`<Interface>Ref\` classes, and the knob/plottable/parameter binders. |
 | **Hosting** | Loads a packed simulator (\`.nupkg\`) into a collectible context so a host (the MMI) can run and hot-reload it. |
 `;
 

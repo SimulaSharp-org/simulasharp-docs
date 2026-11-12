@@ -31,19 +31,25 @@ $targets = @(
   @{ Proj = "Hosting";  Tfm = "net10.0";        Asm = "SimulaSharp.Hosting" }
 )
 
+# Writes text with LF line endings and no BOM, the repo's convention, whatever the OS and the compiler emitted.
+function Write-Lf([string]$path, [string]$text) {
+  [System.IO.File]::WriteAllText($path, ($text -replace "`r`n", "`n"), [System.Text.UTF8Encoding]::new($false))
+}
+
 $collected = @()
 foreach ($t in $targets) {
   $tfm = if ($t.Tfm) { $t.Tfm } else { $Tfm }
   $xml = Join-Path $repo "$($t.Proj)/bin/$Configuration/$tfm/$($t.Asm).xml"
   if (Test-Path $xml) {
-    Copy-Item $xml (Join-Path $outDir "$($t.Asm).xml") -Force
-    $collected += @{ name = $t.Asm; file = "$($t.Asm).xml" }
+    Write-Lf (Join-Path $outDir "$($t.Asm).xml") ([System.IO.File]::ReadAllText($xml))
+    # Ordered, so index.json keeps the same key order on every run and only real changes show in a diff.
+    $collected += [ordered]@{ file = "$($t.Asm).xml"; name = $t.Asm }
     Write-Host "  collected $($t.Asm).xml" -ForegroundColor Green
   } else {
     Write-Host "  skip $($t.Asm) (no XML at $xml — build it with GenerateDocumentationFile on)" -ForegroundColor DarkYellow
   }
 }
 
-$index = @{ generated = (Get-Date -Format "yyyy-MM-dd"); assemblies = $collected }
-$index | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $outDir "index.json") -Encoding UTF8
+$index = [ordered]@{ generated = (Get-Date -Format "yyyy-MM-dd"); assemblies = $collected }
+Write-Lf (Join-Path $outDir "index.json") (($index | ConvertTo-Json -Depth 5) + "`n")
 Write-Host "wrote $($outDir)\index.json ($($collected.Count) assemblies)" -ForegroundColor Cyan

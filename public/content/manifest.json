@@ -5,7 +5,8 @@
       "pages": [
         { "slug": "introduction", "title": "Introduction", "file": "introduction.md" },
         { "slug": "big-picture", "title": "The big picture", "file": "big-picture.md" },
-        { "slug": "authoring-model", "title": "The authoring model", "file": "authoring-model.md" }
+        { "slug": "authoring-model", "title": "The authoring model", "file": "authoring-model.md" },
+        { "slug": "source-and-packages", "title": "Source & packages", "file": "source-and-packages.md" }
       ]
     },
     {
