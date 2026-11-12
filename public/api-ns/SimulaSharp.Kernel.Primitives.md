@@ -1,6 +1,6 @@
 The small value types that shape a model: associations, coroutine yields, and time.
 
-- [`Container<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Container%601) — an owning containment association (shares the parent's SimSite). See [Associations](#/guide/associations).
-- [`Reference<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Reference%601) / [`ReferenceAccessor<T>`](#/api/type/SimulaSharp.Kernel.Primitives.ReferenceAccessor%601) — a non-owning link and its generated accessor.
-- [`SimYield`](#/api/type/SimulaSharp.Kernel.Primitives.SimYield) — what a coroutine yields (`Immediate` / `Delay` / `Await`). See [Coroutines](#/guide/coroutines).
-- [`TimeSnapshot`](#/api/type/SimulaSharp.Kernel.Primitives.TimeSnapshot) — a consistent sim/mission time pair. See [Time & the clock](#/guide/time-and-clock).
+- [`Container<T>`](#/api/type/SimulaSharp.Kernel.Primitives.Container%601) / [`ContainerFactory`](#/api/type/SimulaSharp.Kernel.Primitives.ContainerFactory) — an owning, read-only containment association (shares the parent's SimSite) and the builder the simulator fills it with. See [Associations](#/guide/associations).
+- [`IReference<T>`](#/api/type/SimulaSharp.Kernel.Primitives.IReference%601) — the read-only list of guarded Refs behind a `[CrossReference<T>]`; [`FillableReference<T>`](#/api/type/SimulaSharp.Kernel.Primitives.FillableReference%601) / [`RefCollection`](#/api/type/SimulaSharp.Kernel.Primitives.RefCollection) are the generated wiring's side of it.
+- [`SimYield`](#/api/type/SimulaSharp.Kernel.Primitives.SimYield) — what a coroutine yields (`Immediate` / `Delay` / `Await`, with an optional timeout reported through a [`SimAwaitToken`](#/api/type/SimulaSharp.Kernel.Primitives.SimAwaitToken)). See [Coroutines](#/guide/coroutines).
+- [`TimeSnapshot`](#/api/type/SimulaSharp.Kernel.Primitives.TimeSnapshot) — a sim/mission time pair from a single read. See [Time & the clock](#/guide/time-and-clock).

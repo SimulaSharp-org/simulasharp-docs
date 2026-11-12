@@ -1,0 +1,3 @@
+Build-time parameters. A [`ParameterInfo`](#/api/type/SimulaSharp.Kernel.Parameters.ParameterInfo) is one `[Parameter]` member on a model or service instance: its full dotted path, name, value type, declared default, and boxed read/write. The simulator collects them while it is constructed (through the generated [`IParameterProvider`](#/api/type/SimulaSharp.Kernel.Parameters.IParameterProvider)); a host reads them with `ISimulator.GetParams()` and overrides them with `SetParam(...)`, but only before `Configure()`.
+
+See [Parameters](#/guide/configuration) and [the lifecycle](#/guide/simulator-lifecycle).
