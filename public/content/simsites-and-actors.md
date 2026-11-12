@@ -11,13 +11,14 @@ The rule is short: **one thread, one event queue, per site.** Everything else in
 A SimSite is an **independent scheduling domain**. It owns:
 
 - **one OS thread** (`SimSite-<name>`, a background thread),
-- **one [`EventQueue`](#/api/type/SimulaSharp.Kernel.Services.EventQueue)** — the per-site scheduling structure (see
-  [the event queue & scheduling](#/guide/event-queue-and-scheduling)),
-- **one lock-free inbox** — a `ConcurrentQueue<Action>` for work arriving from *other* threads.
+- **one [`EventQueue`](#/api/type/SimulaSharp.Kernel.Services.EventQueue)** — the per-site scheduling structure, with a
+  fixed capacity (`MaxEvents`, 64 by default; see [the event queue & scheduling](#/guide/event-queue-and-scheduling)),
+- **one lock-free inbox** — a `ConcurrentQueue<Action>` for work arriving from *other* threads,
+- **one error channel** — a logger where failures on the site are reported (see [errors](#errors-stay-on-the-site)).
 
 It implements [`IScheduler`](#/api/type/SimulaSharp.Kernel.Services.IScheduler), which is the surface your models use to
 schedule work. A model doesn't know or care that its scheduler *is* a site; it just calls `AddEvent`, `AddPeriodicEvent`,
-`AddCoroutine`.
+`AddCoroutine` (or their `…AtMission` forms).
 
 ```mermaid
 flowchart TB
@@ -33,6 +34,7 @@ flowchart TB
     MODELS -->|"AddEvent / AddCoroutine"| EQ
   end
   CLK["SimClock horizon"] -.->|"Volatile.Read"| LOOP
+  CLK -.->|"wake when next event is due"| LOOP
 ```
 
 The key consequence: because a site is *one thread*, everything that happens inside it is **serialized**. Two events on
@@ -49,9 +51,11 @@ comes due:
 flowchart TB
   START([running?]) -->|no| PARK["_resume.WaitOne&#40;&#41;<br/>park — 0% CPU"]
   PARK --> START
-  START -->|yes| DRAIN["drain inbox:<br/>while TryDequeue&#40;work&#41; work&#40;&#41;"]
+  START -->|yes| DRAIN["drain inbox:<br/>while TryDequeue&#40;work&#41; work&#40;&#41;<br/>(a throw is logged, not fatal)"]
   DRAIN --> PROC["_events.ProcessDue&#40;clock.SimNowUs&#41;"]
-  PROC --> NEXT{"next event?"}
+  PROC --> MORE{"inbox empty?"}
+  MORE -->|no| START
+  MORE -->|yes| NEXT{"next event?"}
   NEXT -->|"≤ 200 µs away"| SPIN["Thread.SpinWait&#40;1&#41;"] --> START
   NEXT -->|"further off / none"| IDLE["publish next-due,<br/>_resume.WaitOne&#40;backstop&#41;<br/>park — 0% CPU"] --> START
 ```
@@ -65,12 +69,15 @@ if (!_inbox.IsEmpty) continue;                    // work landed while processin
 long nextDueUs = _events.PeekNextDueTime();       // -1 when nothing is scheduled
 long waitUs = nextDueUs < 0 ? BackstopMs * 1000L : nextDueUs - _clock.SimNowUs;
 if (waitUs <= SpinBudgetUs)                        // event imminent (≤ 200 µs)
-    Thread.SpinWait(1);                            //   spin for the tightest latency
-else
 {
-    _nextWakeUs = nextDueUs;                       // tell the clock when to wake me
-    _resume.WaitOne(backstop);                     // park — 0% CPU until then
+    Thread.SpinWait(1);                            //   spin for the tightest latency
+    continue;
 }
+
+// tell the clock when to wake me, then park — 0% CPU until then
+Volatile.Write(ref _nextWakeUs, nextDueUs < 0 ? long.MaxValue : nextDueUs);
+_resume.WaitOne((int)Math.Clamp(waitUs / 1000, 1, BackstopMs));   // timed wait = backstop only
+Volatile.Write(ref _nextWakeUs, long.MaxValue);
 ```
 
 **Who wakes a parked site — on time?** The **clock thread**. It is the sole, continuously advancing writer of the
@@ -84,7 +91,7 @@ Three things release a park, so a site never sleeps through work:
 - a **`Post`/`Inject`** from another thread signals it immediately, so injected work is picked up at once;
 - a **clock pause** signals it, so it observes the stop promptly.
 
-The timed `WaitOne(backstop)` is only a safety net (capped at `BackstopMs`) so nothing can ever sleep blind. Work due
+The timed `WaitOne` is only a safety net (capped at `BackstopMs`, 1 s) so nothing can ever sleep blind. Work due
 within `SpinBudgetUs` (200 µs) is spun for rather than parked, shaving even the wake latency off the most imminent
 events — which also covers a manual/batch clock whose horizon is already at or past the due time.
 
@@ -99,7 +106,8 @@ events — which also covers a manual/batch clock whose horizon is already at or
 ## Parking while paused
 
 Parking is also how a paused clock costs nothing. The site subscribes to the clock's `Started`/`Stopped` events at
-`Start()`:
+`Start()`, and takes the clock's current `IsRunning` as its starting state, so `Start()` works before or after the clock
+starts:
 
 - On **`Stopped`**, `_running` flips to `false` and `_resume` is signalled; next time around the loop the thread calls
   `_resume.WaitOne()` and **parks** on an `AutoResetEvent`, consuming zero CPU.
@@ -117,6 +125,10 @@ stateDiagram-v2
 The same `_resume` handle is used to tear the site down: `Stop()` sets `_disposed`, signals `_resume` to break the park,
 and `Join()`s the thread. So a paused simulation costs nothing, and stopping it is prompt even mid-park.
 
+While paused, the site does **not** drain its inbox. A `Post` or `Inject*` sent to a paused site is queued, and the
+returned `Task` stays incomplete until the clock resumes and the site picks the work up. (A
+[loosely-coupled service](#/guide/services) site is different: it is clock-ungated and runs posted work while paused.)
+
 ## The inbox: crossing thread boundaries
 
 Model code runs on the site's own thread and touches the `EventQueue` directly — that's the fast path, and it's why the
@@ -133,6 +145,11 @@ All three do the same core thing — enqueue an `Action` onto the target site's 
 The difference is only what handle you get back. `Post` gives you nothing; the two `Inject*` variants wrap the work in a
 `TaskCompletionSource` (created with `RunContinuationsAsynchronously`, so a continuation never hijacks the site thread)
 and hand you the `Task`.
+
+You rarely call these verbs by hand. The generated plumbing calls them for you: a
+[`[CrossReference<T>]`](#/guide/associations) `Ref` accessor (`[Triggerable]` methods → `Post`; ordinary methods and
+properties → `InjectAsync`/`InjectVoidAsync`), a [global event](#/guide/events) trigger (`Post` to each subscriber), and
+the [service](#/guide/services) `[ServiceRequest]`/`[ServiceEvent]` plumbing. They all land in the same inbox.
 
 ```mermaid
 flowchart LR
@@ -158,7 +175,7 @@ sequenceDiagram
   participant IB as Site B inbox
   participant CB as Site B thread (target)
   CA->>IB: InjectAsync(() => b.ReadPressure())
-  Note over CA: returns Task&lt;double&gt; immediately;<br/>A keeps spinning, never blocks
+  Note over CA: returns Task&lt;double&gt; immediately;<br/>A keeps running, never blocks
   loop B's run loop
     CB->>IB: TryDequeue → work
     CB->>CB: run ReadPressure() on B's thread
@@ -173,11 +190,28 @@ it *is* B, momentarily driven by A's request. And because A got a `Task` rather 
 own real-time work. A model coroutine typically bridges the gap by `yield return`-ing
 [`SimYield.Await(task)`](#/guide/coroutines) and reading the result after it resumes.
 
+If the target function throws, `InjectAsync`/`InjectVoidAsync` catch it and fault the returned `Task`, so the exception
+reaches the caller when it reads the result. A plain `Post` has no `Task` to fault, so the site catches the throw itself
+(see below).
+
+## Errors stay on the site
+
+A throw never kills a site thread. The site isolates two kinds of work:
+
+- **posted work** — a `Post`ed action that throws (an event handler, a service-event callback, a `[Triggerable]` call)
+  is caught by the run loop, logged at **Error** on the site's error channel, and dropped;
+- **scheduled entries** — an event, periodic or coroutine step that throws is caught by the
+  [event queue](#/guide/event-queue-and-scheduling), logged the same way, and dropped for good: a periodic is not
+  re-armed, a coroutine is disposed, and its slot is freed.
+
+Everything else on the site keeps running. The error channel of a model site logs under `SimulatorThreads.<site name>`;
+a `ServiceBase` site logs under the service's own logger.
+
 ## Intra-site vs cross-site: the one table to remember
 
 | | **Within a site** (same subtree) | **Across sites** |
 |---|---|---|
-| How you call | Direct method call | `Post` / `InjectVoidAsync` / `InjectAsync` |
+| How you call | Direct method call | Through a generated `Ref` (or an event), which uses `Post` / `InjectVoidAsync` / `InjectAsync` |
 | Runs on | Caller's (== callee's) thread | Target site's thread |
 | Cost | A method call; synchronous | Enqueue + a later drain; asynchronous |
 | Result | Return value, immediately | A `Task`, completed later |
@@ -201,8 +235,37 @@ The only place concurrency exists is the *inbox boundary*, and the kernel handle
 
 ## Closely-bound models share a site
 
-How do models end up on the same site? By **containment**. A root model and its whole
-[containment subtree](#/guide/models-and-containment) share **one** SimSite. That is a design lever, not an accident:
+How do models end up on the same site? You say so in the [assembly YAML](#/guide/the-assembly). Each entry under
+`Sites:` becomes **one** SimSite, and every root model listed under it runs there. A root model's whole
+[containment subtree](#/guide/models-and-containment) always goes with it, so a child can never sit on a different site
+than its parent:
+
+```yaml
+Simulator:
+  Name: Plant
+  Sites:
+    - Name: Plant            # one SimSite = one thread
+      MaxEvents: 128         # event-queue capacity (default 64)
+      Models:
+        - Name: Plant
+          Type: Demo.Plant
+          Models:            # contained children run on the Plant site too
+            - Pumps:
+                - Name: Pump1
+                  Type: Demo.Pump
+            - Valves:
+                - Name: Valve1
+                  Type: Demo.Valve
+    - Name: Sensors          # a second SimSite, in parallel
+      Models:
+        - Name: Radar
+          Type: Demo.Radar
+```
+
+Each [service](#/guide/services) gets a site of its own as well (a `SimSite` for a `ServiceBase`, a clock-ungated
+`LooselyCoupledSite` for a `LooselyCoupledServiceBase`), so a call into a service is always cross-thread.
+
+Where you put models is a design lever, not an accident:
 
 - Models that talk constantly — a `Plant` and its `Pump`s and `Valve`s — belong in the same subtree, so their
   interaction is direct, synchronous, and lock-free.
@@ -223,7 +286,7 @@ flowchart TB
 ```
 
 So the boundaries of your sites *are* the boundaries of your parallelism, and you draw them by deciding what contains
-what. That's the subject of [models & containment](#/guide/models-and-containment) and, at the judgement level,
+what and which site each root goes on. That's the subject of [models & containment](#/guide/models-and-containment) and, at the judgement level,
 [choosing a topology](#/guide/choosing-a-topology).
 
 ## Consequence for design: never block a site thread
@@ -240,12 +303,13 @@ what. That's the subject of [models & containment](#/guide/models-and-containmen
 
 | You want to… | Do this |
 |---|---|
-| Call another model in the same subtree | Just call it — direct, synchronous, lock-free |
-| Call a model on another site, no result needed | `peer.Post(() => ...)` |
-| Call another site and know when it's done | `await`/`Await` the `Task` from `InjectVoidAsync` |
-| Call another site and get a value back | `InjectAsync<T>` + [`SimYield.Await`](#/guide/coroutines) the returned `Task` |
+| Call another model in the same subtree (or site) | Just call it (containment or `[Reference<T>]`) — direct, synchronous, lock-free |
+| Call a model on another site, no result needed | A `[Triggerable]` method on its `[CrossReference<T>]` `Ref` (a `Post` underneath) |
+| Call another site and know when it's done | A `void` method on its `Ref` returns a `Task` (`InjectVoidAsync`); `SimYield.Await` it |
+| Call another site and get a value back | A value method on its `Ref` returns a `Task<T>` (`InjectAsync`); [`SimYield.Await`](#/guide/coroutines) it |
+| Marshal raw work onto a site yourself | `Post` / `InjectVoidAsync` / `InjectAsync<T>` on its [`IDispatcher`](#/guide/sites-and-dispatch) |
 | Run parallel work | Put loosely-coupled subtrees on **different** sites |
-| Keep two models lock-free and synchronous | Put them in the **same** containment subtree |
+| Keep two models lock-free and synchronous | Put them in the **same** containment subtree, or under the same `Sites:` entry |
 
 Next: how the per-site queue actually schedules and fires work — **[the event queue &
 scheduling](#/guide/event-queue-and-scheduling)**.

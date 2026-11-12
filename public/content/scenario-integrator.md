@@ -29,8 +29,9 @@ flowchart LR
 
 ## The model
 
-Because it carries generated members (`[Parameter]`, a knob, a plottable) the model is **`partial`**.
-The knob property is a `partial` declaration with **no body** — the
+Every model is **`partial`** (`SIM029`), and here that matters: the generator fills in the
+`[Parameter]` binding, the knob and the plottable. The knob property is a `partial` declaration
+with **no body** — the
 [`KnobGenerator`](#/api/type/SimulaSharp.CodeGen.KnobGenerator) materializes the volatile backing
 field, and the `[Plottable]` reuses that *same* field.
 
@@ -78,8 +79,10 @@ public partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBase(c, s
 
 ## The assembly
 
-`Config` values are filled by the assembly before `Configure()` runs. Here the battery starts with
-a 500 Wh cell draining at 40 W.
+Each `[Parameter]` is filled from the instance's `Config:` block while the simulator is constructed,
+so before `Configure()` runs. A key the block omits falls back to the default in the attribute, so
+the block is optional; a key with no matching `[Parameter]` is a warning (`SIM016`). Here the battery
+starts with a 500 Wh cell draining at 40 W.
 
 ```yaml
 # power.simassembly.yaml
@@ -101,21 +104,25 @@ a clean **run-a-bit, sample, repeat** loop. Each sweep of
 and snapshots every plottable against it.
 
 ```csharp
+using Power;
+
 using var sim = new PowerSimulator();
 sim.Configure();
 sim.Start();
 
 for (int i = 0; i < 5; i++)
 {
-    sim.Clock.RunFor(1_000_000);                       // advance ~1 s of real time, then pause
+    sim.RunFor(1_000_000);                             // advance ~1 s of real time, then pause
     var (missionUs, values) = sim.SamplePlottables();  // one consistent, mission-stamped frame
     Console.WriteLine($"{missionUs} us  charge={values["Power.Batt.ChargePct"]:F1} %");
 }
 ```
 
 The plottable is keyed by its **full dotted path**, `Power.Batt.ChargePct` — the simulator name,
-the model instance name, then the member. The read-only knob of the same value is available on
-`sim.Knobs` under the identical path, ready for an [`IKnobChannel`](#/guide/observability) to bind.
+the model instance name, then the member. The read-only knob of the same value is in the
+`sim.Knobs` list with the identical `Path`, ready for an [`IKnobChannel`](#/guide/observability)
+to bind. The two parameters show up the same way in `sim.GetParams()` (`Power.Batt.CapacityWh`,
+`Power.Batt.NetPowerW`); `sim.SetParam(...)` overrides one, but only **before** `Configure()`.
 
 ## What to notice
 

@@ -6,8 +6,9 @@ source-generator — so setup is short. This page walks it step by step; the fin
 
 ## 1. Point NuGet at the SimulaSharp feed
 
-SimulaSharp ships as **NuGet packages** — you don't build it from source to use it. You decide where the packages come
-from: a machine-wide NuGet source, or a `nuget.config` next to your project. A folder feed is the simplest:
+SimulaSharp ships as **NuGet packages** — you don't build it from source to use it. If you restore from nuget.org,
+there is nothing to configure: skip to step 2. To use another feed, you decide where the packages come from: a
+machine-wide NuGet source, or a `nuget.config` next to your project. A folder feed is the simplest:
 
 ```xml
 <!-- nuget.config (next to your .csproj) -->
@@ -19,8 +20,9 @@ from: a machine-wide NuGet source, or a `nuget.config` next to your project. A f
 </configuration>
 ```
 
-Point the `simulasharp` source at wherever the `.nupkg` files live — the folder a `pack` produced, an internal NuGet
-server, GitHub Packages, etc. (A `nuget.config.sample` in the framework repo mirrors this.)
+Point the `simulasharp` source at wherever the `.nupkg` files live — the `artifacts` folder that the framework's
+`pack.ps1` produced, an internal NuGet server, GitHub Packages, etc. (A `nuget.config.sample` in the framework repo
+mirrors this.)
 
 ## 2. Create the project
 
@@ -37,7 +39,7 @@ is a library.)
 
 ```xml
 <ItemGroup>
-    <PackageReference Include="SimulaSharp" Version="0.4.0" />
+    <PackageReference Include="SimulaSharp" Version="0.5.3" />
 </ItemGroup>
 ```
 
@@ -45,8 +47,10 @@ That's the whole reference. `SimulaSharp` is a **meta-package** that pulls in:
 
 - **`SimulaSharp.Kernel`** — the runtime (referenced normally),
 - **`SimulaSharp.CodeGen`** — the source-generator, brought in as an **analyzer** with its `<SimAssembly>` build support,
-  automatically. You don't set `OutputItemType="Analyzer"`, and you don't import any targets by hand — the package does
-  both.
+  automatically (it flows through the meta-package as `buildTransitive`). You don't set `OutputItemType="Analyzer"`, and
+  you don't import any targets by hand — the package does both.
+
+`SimulaSharp.Hosting` is **not** part of the meta-package: only a host that loads packed simulators needs it.
 
 ## 4. Add your assembly file as a `<SimAssembly>`
 
@@ -66,8 +70,8 @@ for the schema.
 
 ## 5. (Optional) Emit the generated code to disk
 
-By default the generated sources exist only in-memory. To read them — the `<Name>Simulator`, the `<Type>Ref` accessors,
-the knob/plottable/parameter binders — dump them to a folder and exclude that folder from compilation (the compiler
+By default the generated sources exist only in-memory. To read them — the `<Name>Simulator`, the `<Interface>Ref`
+wrappers, the knob/plottable/parameter binders — dump them to a folder and exclude that folder from compilation (the compiler
 already has the in-memory copy):
 
 ```xml
@@ -96,7 +100,7 @@ already has the in-memory copy):
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="SimulaSharp" Version="0.4.0" />
+        <PackageReference Include="SimulaSharp" Version="0.5.3" />
     </ItemGroup>
 
     <ItemGroup>
@@ -109,9 +113,9 @@ already has the in-memory copy):
 </Project>
 ```
 
-> **Building against source instead?** Framework contributors (or a mono-repo) can `ProjectReference` `Kernel.csproj`
-> normally and `SimulaSharp.CodeGen.csproj` with `OutputItemType="Analyzer" ReferenceOutputAssembly="false"`, then
-> `<Import>` `CodeGen/build/SimulaSharp.CodeGen.targets` explicitly (a `ProjectReference` doesn't auto-import package
+> **Building against source instead?** Framework contributors (or a mono-repo) can `ProjectReference`
+> `Kernel/Kernel.csproj` normally and `CodeGen/SimulaSharp.CodeGen.csproj` with `OutputItemType="Analyzer"
+> ReferenceOutputAssembly="false"`, then `<Import>` `CodeGen/build/SimulaSharp.CodeGen.targets` explicitly (a `ProjectReference` doesn't auto-import package
 > build targets). The package path above is what a normal consumer uses.
 
 ## What the build wires up
@@ -128,7 +132,7 @@ flowchart LR
   G["CodeGen generators"]
   subgraph out["generated (in-memory + Generated/)"]
     SIM["&lt;Name&gt;Simulator : SimulatorBase"]
-    REF["&lt;Type&gt;Ref accessors"]
+    REF["&lt;Interface&gt;Ref wrappers"]
     BIND["knob / plottable / parameter binders"]
   end
   Y --> T --> G
@@ -136,7 +140,7 @@ flowchart LR
   G --> SIM
   G --> REF
   G --> BIND
-  G -->|"bad topology"| ERR["SIM001–SIM020 build errors"]
+  G -->|"bad topology / attribute misuse"| ERR["SIM001–SIM030 build errors"]
 ```
 
 With the project set up, move on to **[Build, run & test](#/guide/build-run-test)**.

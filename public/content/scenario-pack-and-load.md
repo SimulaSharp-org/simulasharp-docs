@@ -34,18 +34,35 @@ graph LR
 ## Pack it
 
 `dotnet pack` builds the library and its generated simulators into a NuGet package. The pack's
-`lib/<tfm>/` payload is what `SimulatorPackage` extracts.
+`lib/<tfm>/` payload is what `SimulatorPackage` extracts. A pack target that comes with the
+`SimulaSharp` package adds the project's `.deps.json` and private dependency DLLs to that folder, and
+leaves the `SimulaSharp.*` assemblies out (see [packing & hosting](#/guide/packing-and-hosting)).
 
 ```bash
 dotnet pack Bird.csproj -c Release
 #  → bin/Release/Bird.1.0.0.nupkg
+#     lib/net10.0/Bird.dll
+#     lib/net10.0/Bird.deps.json
 ```
 
+The loader takes the main assembly name from the package id, so keep the `PackageId` equal to the
+`AssemblyName` (the default).
+
 ## Load, discover, run
+
+The host is a separate project. The loader lives in its own package, `SimulaSharp.Hosting`, which is
+**not** part of the `SimulaSharp` meta-package; it brings `SimulaSharp.Kernel` with it.
+
+```xml
+<ItemGroup>
+  <PackageReference Include="SimulaSharp.Hosting" Version="0.5.3" />
+</ItemGroup>
+```
 
 `SimulatorPackage` accepts a `.nupkg`, a build-output **directory**, or a single `.dll`. It scans for
 public, non-abstract `SimulatorBase` subclasses with a parameterless constructor — the generated
 `<Name>Simulator` types — and lists them by **name** (the type name minus the trailing `Simulator`).
+`Create` looks the name up case-insensitively.
 
 ```csharp
 using SimulaSharp.Hosting;
@@ -60,10 +77,12 @@ Console.WriteLine(string.Join(", ", pack.Simulators));   // e.g. "Bird"
 // 3 ── CREATE: a fresh ISimulator instance. The caller owns its lifecycle.
 ISimulator sim = pack.Create("Bird");
 
-// 4 ── RUN: the usual lifecycle (register any log sinks / knob channel first).
+// 4 ── RUN: the usual lifecycle (register any log sinks / knob channel first,
+//    and tune parameters with GetParams()/SetParam() before Configure()).
+sim.RegisterLogSink(new ConsoleSink());   // your ILogSink
 sim.Configure();
 sim.Start();
-sim.Clock.RunFor(5_000_000);        // a bounded ~5 s run
+sim.RunFor(5_000_000);              // a bounded ~5 s run; blocks, then the clock pauses
 
 // 5 ── TEAR DOWN: dispose the simulator (single-use) BEFORE the pack.
 sim.Dispose();
@@ -102,9 +121,10 @@ flowchart LR
 ## What to notice
 
 - **Collectible ALC.** The pack loads into a collectible
-  [`AssemblyLoadContext`](#/api/type/System.Runtime.Loader.AssemblyLoadContext); `pack.Dispose()`
-  unloads it, and once the last reference is collected the shadow copy is removed. The payload is
-  **shadow-copied** to a temp folder first, so the original build can be rebuilt while a copy runs.
+  `AssemblyLoadContext`; `pack.Dispose()` unloads it, forces a few GC passes, and deletes the shadow
+  copy (`pack.ShadowDirectory`). The payload is **shadow-copied** to a temp folder first, so the
+  original build can be rebuilt while a copy runs. If something still pins the context, the delete
+  keeps failing and the shadow folder is left behind.
 - **Shared framework types.** Every `SimulaSharp.*` assembly resolves from the host's Default context,
   not the pack. That is what gives `ISimulator`/`Knob`/`Plottable`/`LogEntry` a **single type
   identity** across the boundary — the host can hold the `ISimulator` the pack created and call it

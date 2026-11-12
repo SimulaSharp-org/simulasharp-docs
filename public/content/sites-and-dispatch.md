@@ -23,6 +23,9 @@ classDiagram
     +AddEvent(...) int
     +AddPeriodicEvent(...) int
     +AddCoroutine(...) int
+    +AddEventAtMission(...) int
+    +AddPeriodicEventAtMission(...) int
+    +AddCoroutineAtMission(...) int
     +RemoveEvent(int)
   }
   class ISite {
@@ -51,7 +54,7 @@ classDiagram
 
 | Interface | Members | The capability | Who holds it |
 |---|---|---|---|
-| [`IDispatcher`](#/api/type/SimulaSharp.Kernel.Services.IDispatcher) | `Post`, `InjectVoidAsync`, `InjectAsync` | **marshal** work onto the site's thread | the `[ServiceEvent]`/`[ServiceRequest]` plumbing; anything that needs to hand work to a site |
+| [`IDispatcher`](#/api/type/SimulaSharp.Kernel.Services.IDispatcher) | `Post`, `InjectVoidAsync`, `InjectAsync` | **marshal** work onto the site's thread | the `[ServiceEvent]`/`[ServiceRequest]` plumbing; a [global event](#/guide/events) for each subscriber; anything that needs to hand work to a site |
 | [`IScheduler`](#/api/type/SimulaSharp.Kernel.Services.IScheduler) `: IDispatcher` | `AddEvent`, `AddPeriodicEvent`, `AddCoroutine`, `…AtMission`, `RemoveEvent` | marshal **+ schedule** on sim time | a **model** (`Scheduler`), and a `ServiceBase` (protected `Scheduler`) |
 | [`ISite`](#/api/type/SimulaSharp.Kernel.Services.ISite) `: IDisposable` | `Name`, `Start`, `Stop` | the **lifecycle** | the **simulator**, and nobody else |
 | [`IDispatcherSite`](#/api/type/SimulaSharp.Kernel.Services.IDispatcherSite) `: IDispatcher, ISite` | *(the union)* | marshal + lifecycle, **no** sim-time queue | a service, as its public `Site` |
@@ -62,7 +65,13 @@ The two concrete sites pick from these:
   full sim-paced site: marshalling, sim-time scheduling, and lifecycle.
 - [`LooselyCoupledSite`](#/api/type/SimulaSharp.Kernel.Services.LooselyCoupledSite) implements only **`IDispatcherSite`** —
   marshalling + lifecycle, but **no sim-time queue**. It is [clock-ungated](#/guide/services): a pure Post-driven
-  serial executor (a dispatcher) that runs marshalled work and sleeps when idle, never advancing on the horizon.
+  serial executor (a dispatcher) that runs marshalled work and sleeps when idle, never advancing on the horizon. It does
+  not watch the clock, so it keeps running posted work while the clock is paused. Its thread is named
+  `LooselyCoupled-<name>` (a `SimSite` thread is `SimSite-<name>`).
+
+Who builds which: the simulator creates one `SimSite` per `Sites:` entry in the assembly YAML and hands it to the models
+there as their `IScheduler`. A `ServiceBase` creates its own `SimSite`; a `LooselyCoupledServiceBase` creates its own
+`LooselyCoupledSite`. Either way the simulator owns the lifecycle: it starts, stops and disposes every site.
 
 ## Why segregate — what each holder *cannot* do
 
@@ -84,10 +93,15 @@ compile.
 ## Marshalling is the common denominator
 
 Every cross-thread hand-off in SimulaSharp — a `[ServiceRequest]` marshalled onto a service, a `[ServiceEvent]` delivered
-to a subscriber, a `[CrossReference<T>]` accessor dispatching cross-site — bottoms out at **`IDispatcher`**. Because both
-`SimSite` and `LooselyCoupledSite` are `IDispatcher`s, the exact same generated plumbing drives both a sim-paced service
-and a [loosely-coupled one](#/guide/services): the caller marshals through `Site`, and where and when that work runs is
-the site's business.
+to a subscriber, a `[CrossReference<T>]` accessor dispatching cross-site, a [global event](#/guide/events) delivered to
+its subscribers — bottoms out at **`IDispatcher`**. Because both `SimSite` and `LooselyCoupledSite` are `IDispatcher`s,
+the exact same generated plumbing drives both a sim-paced service and a [loosely-coupled one](#/guide/services): the
+caller marshals through `Site`, and where and when that work runs is the site's business.
+
+Global events show the split clearly. `SimEvent.Register(subscriber, subDispatcher, handler)` takes the subscriber's
+*identity* and, separately, the `IDispatcher` its handler runs on: a model passes its `Scheduler`, a service passes its
+public `Site`. Each trigger then `Post`s the handler onto that dispatcher. The event needs nothing more than
+`IDispatcher`, so models and both kinds of service can subscribe the same way.
 
 ## Where to go next
 

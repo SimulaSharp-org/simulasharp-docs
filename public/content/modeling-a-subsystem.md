@@ -72,6 +72,10 @@ shape:
 | "do this once, *d* µs from now" | `AddEvent(action, d)` | [event queue](#/guide/event-queue-and-scheduling) |
 | "a sequence of steps and waits" (spin-up, handshake, protocol) | `AddCoroutine(factory, delay)` | [coroutines](#/guide/coroutines) |
 
+Each has a mission-time twin — `AddEventAtMission`, `AddPeriodicEventAtMission`, `AddCoroutineAtMission` — that takes
+an absolute mission time instead of a delay (and refuses a past instant with -1). Every `Add*` returns an event id you
+can pass to `RemoveEvent(id)` to cancel it, or -1 when it could not schedule (for example, the site's queue is full).
+
 ## Reading the clock and integrating over your own Δt
 
 This is the part that trips people up: **a fired action receives no `Δt`**. Time is [published, not
@@ -131,7 +135,7 @@ public sealed partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBa
     [Parameter(100.0)] public double CapacityAh { get; set; }
 
     // Operator-settable input: the load, as a slider 0–50 A.
-    [NumberKnob<double>("Load", Min = 0, Max = 50, DecimalPlaces = 1)]
+    [NumberKnob<double>("Load", Min = 0, Max = 50, DecimalPlaces = 1, KnobType = NumberKnobType.Slider)]
     public partial double Load { get; set; }
 
     // Model-driven readout AND a graphed series — one backing field, both roles.
@@ -141,19 +145,26 @@ public sealed partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBa
 
     // A button: recharge to full.
     [TriggerKnob("Recharge")]
-    protected void Handle_Recharge() => _chargeAh = CapacityAh;
+    private void Handle_Recharge() => _chargeAh = CapacityAh;
 }
 ```
 
 Note the split of concerns:
 
-- **`[Parameter]`** — a build-time parameter from the [assembly](#/guide/the-assembly) (`CapacityAh: 100`), not an operator
-  control.
-- **read/write knob** (`Load`) — the operator drives it; the model reads it in `Step()` as `_loadA` (or just reference
-  `Load` directly — it's a normal typed property).
+- **`[Parameter]`** — a build-time parameter with its default in the attribute (`100.0`); the
+  [assembly](#/guide/the-assembly) may override it in the instance's `Config:` block (`CapacityAh: 50`), or a host may
+  via `SetParam` before `Configure()`. Not an operator control. See [parameters](#/guide/configuration).
+- **read/write knob** (`Load`) — the operator drives it; the model just reads `Load` in `Step()` — it's a normal typed
+  property (it replaces the plain `_loadA` field from the first sketch). To react the moment the operator changes it,
+  subscribe to the generated `LoadChanged` event in `Configure()`; it fires on this model's site thread.
 - **read-only knob + plottable** (`SoC`) — the model drives it; the operator watches it and the chart graphs it.
-- **trigger** (`Recharge`) — a button whose handler runs **on this model's site thread**, so it touches `_chargeAh`
-  lock-free.
+- **trigger** (`Recharge`) — a button over a parameterless `void Handle_Recharge()`. The generator adds a public
+  `Recharge()` that calls it, and a press from the UI is posted **onto this model's site thread**, so the handler
+  touches `_chargeAh` lock-free.
+
+Other knob kinds follow the same pattern: `[TickBoxKnob]` for a `bool`, `[TextKnob]` for a `string`, `[EnumKnob]` for an
+enum (a dropdown). `[NumberKnob<T>]` works for any numeric `T`, shown as an input field (the default), a `Slider` or a
+`Rotary`.
 
 ## The whole model
 
@@ -170,7 +181,7 @@ public sealed partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBa
 
     [Parameter(100.0)] public double CapacityAh { get; set; }
 
-    [NumberKnob<double>("Load", Min = 0, Max = 50, DecimalPlaces = 1)]
+    [NumberKnob<double>("Load", Min = 0, Max = 50, DecimalPlaces = 1, KnobType = NumberKnobType.Slider)]
     public partial double Load { get; set; }
 
     [NumberKnob<double>("State of charge", Min = 0, Max = 1, DecimalPlaces = 3, IsReadOnly = true)]
@@ -197,8 +208,22 @@ public sealed partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBa
     }
 
     [TriggerKnob("Recharge")]
-    protected void Handle_Recharge() => _chargeAh = CapacityAh;
+    private void Handle_Recharge() => _chargeAh = CapacityAh;
 }
+```
+
+Wired into an assembly, with the default capacity overridden:
+
+```yaml
+Simulator:
+  Name: Power
+  Sites:
+    - Name: Main
+      Models:
+        - Name: Bat1
+          Type: Demo.Battery
+          Config:
+            CapacityAh: 50
 ```
 
 ## When the step needs a peer or a service
@@ -225,6 +250,7 @@ If the step needs data from another model, *how* you fetch it depends on where t
 | Survive lag without losing integral | integrate over real `Δt`; the periodic bursts to catch up for you |
 | Let the operator watch a value | read-only `[*Knob]` (add `[Plottable]` to graph it too) |
 | Let the operator set a value | read/write `[*Knob]` |
+| React when the operator sets it | subscribe to the generated `<Name>Changed` event in `Configure()` |
 | Give the operator a button | `[TriggerKnob]` on a `Handle_<Name>()` method |
 | Take a fixed build-time parameter | `[Parameter]` property, set in the assembly |
 

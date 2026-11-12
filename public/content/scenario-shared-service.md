@@ -35,7 +35,8 @@ graph TB
 ## The service
 
 A service derives [`ServiceBase`](#/api/type/SimulaSharp.Kernel.Model.ServiceBase) (ctor takes the
-clock, a logger, and a diagnostic **name**) and is **`partial`** so the
+clock, a logger, a diagnostic **name**, and an optional event-queue size `maxEvents`, default 64) and
+is **`partial`** so the
 [`ServiceGenerator`](#/api/type/SimulaSharp.CodeGen.ServiceGenerator) can weave in the plumbing. It
 declares a publish channel with a class-level `[ServiceEvent]` and a request entry point with a
 method-level `[ServiceRequest]`.
@@ -69,15 +70,22 @@ public partial class Environment(IClock c, ILogger l) : ServiceBase(c, l, "Envir
 ```
 
 For `[ServiceEvent("SunAngle", typeof(double))]` the generator emits a public
-`RegisterCallback_SunAngle(IScheduler, Action<double>)` (subscribers call it with **their own**
-scheduler) and a protected `Trigger_SunAngle(double)` (the service calls it to publish). For the
-request it emits a public `CurrentAngle()` that marshals onto the service's own site.
+`RegisterCallback_SunAngle(IDispatcher, Action<double>)` (subscribers call it with **their own**
+scheduler — an `IScheduler` is an `IDispatcher`) and a protected `Trigger_SunAngle(double)` (the
+service calls it to publish). A payload-less `[ServiceEvent("X")]` emits the argument-free forms.
+
+For the request the generator strips the `Handle_` prefix and emits a public `CurrentAngle()` that
+marshals onto the service's own site. It always returns an awaitable: `Task<T>` when the handler
+returns a value, plain `Task` when it returns `void`. A handler takes **at most one** parameter
+(more is `SIM022`); pass a name to `[ServiceRequest("Name")]` to override the inferred one.
 
 ## A client model
 
 A model gets its handle through a **settable** [`[ServiceRef]`](#/guide/services) member, bound by
 the assembly's `Deps:` — *by service name*. In `Configure()` it subscribes, passing its **own**
-`Scheduler` so the callback lands on its site; it may also make requests.
+`Scheduler` so the callback lands on its site; it may also make requests. (The simulator runs every
+service's `Configure()` before any model's, and binds all `Deps:` while assembling, so the handle is
+already set here.)
 
 ```csharp
 using System;
@@ -117,7 +125,7 @@ public partial class Panel(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
             Task<double> req = Environment.CurrentAngle();   // marshalled onto the service site
             yield return SimYield.Await(req);
             double angle = req.GetAwaiter().GetResult();
-            Logger.Trace($"polled angle = {angle:F0} deg");
+            Logger.LogDebug($"polled angle = {angle:F0} deg");
             yield return SimYield.Delay(2_000_000);
         }
     }
@@ -151,7 +159,8 @@ sequenceDiagram
 
 Services are declared under `Services:` (name + fully-qualified type). Each model binds its
 `[ServiceRef]` member to a service **by name** in its `Deps:` block. Here both panels depend on the
-one `Environment`.
+one `Environment`. A service entry may carry its own `Deps:` too — services can depend on services,
+even cyclically. A wrong member is `SIM013`, an unknown service `SIM014`, a type mismatch `SIM015`.
 
 ```yaml
 # env.simassembly.yaml
@@ -182,7 +191,7 @@ Simulator:
   price of a capability any number of models can share safely.
 - **Two directions, two mechanisms.** `[ServiceEvent]` is publish/subscribe, **fire-and-forget**
   (no result) — perfect for "something changed", fanned out to many. `[ServiceRequest]` is
-  request/response, optionally returning `Task<T>` — for when a model needs an *answer*. Prefer the
+  request/response, returning `Task` or `Task<T>` — for when a model needs an *answer*. Prefer the
   event for broadcast; reserve the request for genuine round-trips.
 - **You pass your own scheduler to subscribe.** `RegisterCallback_*` records *(your scheduler, your
   callback)*, which is how delivery lands on *your* site. The callback then runs on your thread, so
@@ -190,5 +199,11 @@ Simulator:
 - **A service centralizes — so it can bottleneck.** All requests serialize on the one service thread.
   Broadcast with events; don't have every model hammer a synchronous request each tick. See
   [interaction patterns](#/guide/interaction-patterns) and [model vs service](#/guide/model-vs-service).
+- **Broadcast without a service.** If nothing needs to own the state, a
+  [global event](#/guide/events) (`SimEvent<T>`) fans out the same way with no thread of its own, and
+  any model or service may trigger it.
+- **External I/O gets the other base.** A service that talks to hardware or another process derives
+  [`LooselyCoupledServiceBase`](#/api/type/SimulaSharp.Kernel.Model.LooselyCoupledServiceBase)
+  instead: same `[ServiceEvent]`/`[ServiceRequest]` plumbing, but its site is not paced by the clock.
 
 Next: put it all together — **[a satellite topology](#/guide/scenario-satellite)**.

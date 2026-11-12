@@ -11,23 +11,33 @@ dotnet build
 
 `dotnet build` runs the source generators as part of compilation. Each `<SimAssembly>` file is parsed and
 validated against your *real* types, and for every valid assembly a `<Name>Simulator` class is emitted. A wrong
-topology — an unknown type, a container/element mismatch, a dangling reference, a bad `[Plottable]` member — is a
-**compile error**, one of `SIM001`–`SIM020` (see the full table in the
-**[Assembly YAML reference](#/guide/assembly-yaml-reference)**). On any error the simulator is **not** emitted, so
-you never get a cascade of follow-on errors — fix the reported `SIMxxx` and rebuild.
+topology — an unknown type, a container/element mismatch, a dangling reference, a bad event handler — or a misused
+attribute — a bad `[Plottable]` member, a non-`void` `[Triggerable]` — is a **compile error**, one of
+`SIM001`–`SIM030` (see the full table in the **[Assembly YAML reference](#/guide/assembly-yaml-reference)**). The one
+warning is `SIM016`, a `Config:` key with no matching `[Parameter]`. When the assembly fails validation the simulator
+is **not** emitted, so you never get a cascade of follow-on errors — fix the reported `SIMxxx` and rebuild.
+
+Every model and service type must be declared `partial`, because the generators add code to it; a non-`partial` one is
+`SIM029`.
 
 To read the generated code, enable `EmitCompilerGeneratedFiles` (see
 **[Project setup](#/guide/project-setup)**) and look in `Generated/`.
 
 ## Run a simulator
 
-The generated class is an [`ISimulator`](#/api/type/SimulaSharp.Kernel.Services.ISimulator) with a **parameterless
-constructor**. A driver (the MMI, or your own CLI) walks it through the lifecycle:
+The generated class is an [`ISimulator`](#/api/type/SimulaSharp.Kernel.Services.ISimulator) in the **global
+namespace**, with a **parameterless constructor** that assembles the whole topology. A driver (the MMI, or your own
+CLI) walks it through the lifecycle:
 
 ```csharp
-using var sim = new PlantSimulator();   // <Name> from Simulator.Name in the YAML
+using var sim = new PlantSimulator();   // <Name> from Simulator.Name in the YAML; already assembled
+sim.RegisterLogSink(mySink);            // any ILogSink; may be added at any time
 
-sim.Configure();    // run every model's / service's Configure() depth-first
+// optional: tune parameters before Configure()
+var rate = sim.GetParams().Single(p => p.Path == "Plant.Tank.FillRate");
+sim.SetParam(rate, 3.0);
+
+sim.Configure();    // run every service's, then every model's Configure()
 sim.Start();        // start the sites and the clock — time begins advancing 1:1
 
 // … observe knobs / plottables, drive it …
@@ -36,8 +46,9 @@ sim.Stop();         // freeze the horizon (resume with Start())
 // Dispose (via `using`) tears it down — single-use, no reset.
 ```
 
-The states advance strictly `Initialized → Configured → Running` (a constructed simulator starts already `Initialized`); calling them out of order throws.
-`Stop()` freezes the run **without** leaving `Running` — check
+The states advance strictly `Initialized → Configured → Running` (a constructed simulator starts already
+`Initialized`). `Start()` before `Configure()` throws, and so does `SetParam(...)` after it; a second `Configure()` is a
+no-op. `Stop()` freezes the run **without** leaving `Running` — check
 [`IsRunning`](#/api/type/SimulaSharp.Kernel.Services.ISimulator) for the live status. See
 **[Simulator lifecycle](#/guide/simulator-lifecycle)** for the full walk.
 
@@ -48,18 +59,20 @@ known length, arm the clock to stop itself and block until it does:
 
 ```csharp
 sim.Configure();
-sim.Clock.RunFor(200_000);   // run ~200 ms of sim time (≈200 ms wall clock), then pause
+sim.Start();
+sim.RunFor(200_000);   // run ~200 ms of sim time (≈200 ms wall clock), then pause
 ```
 
-`RunFor(durationUs)` starts the clock if needed, arms an auto-pause at `now + duration`, and blocks the caller
-until that pause fires. It takes roughly `durationUs` of *wall-clock* time — a controlled real-time run, not a
-fast-forward.
+`ISimulator.RunFor(durationUs)` arms an auto-pause at `now + duration` and blocks the caller until that pause fires.
+It takes roughly `durationUs` of *wall-clock* time — a controlled real-time run, not a fast-forward. Call `Start()`
+first: `RunFor` only drives the clock, and without `Start()` the sites are never started, so time advances but no
+model runs. After the pause, `Start()` resumes, or another `RunFor` runs a further span.
 
 ## Test
 
 Testing is **real-time**, by design: there is no manual/virtual clock. Tests drive the real
-[`SimClock`](#/api/type/SimulaSharp.Kernel.Services.SimClock), run a short bounded span with `RunFor`, and observe
-off-thread effects with a **bounded spin** rather than a fixed sleep. The suite uses **NUnit**. The pattern
+[`SimClock`](#/api/type/SimulaSharp.Kernel.Services.SimClock) (through the simulator, or directly), run a short
+bounded span with `RunFor`, and observe off-thread effects with a **bounded spin** rather than a fixed sleep. The suite uses **NUnit**. The pattern
 (from `Kernel.Tests`):
 
 ```csharp
@@ -68,8 +81,9 @@ public void Plant_fills_at_the_configured_rate()
 {
     using var sim = new PlantSimulator();
     sim.Configure();
+    sim.Start();
 
-    sim.Clock.RunFor(100_000);   // 100 ms of real time
+    sim.RunFor(100_000);   // 100 ms of real time
 
     // WaitUntil spins up to a timeout, returning the final value so a miss fails
     // the assertion instead of hanging — never a bare Thread.Sleep.
@@ -79,7 +93,7 @@ public void Plant_fills_at_the_configured_rate()
 
 Two helpers make real-time assertions robust (see `Kernel.Tests/TestSupport.cs`):
 
-- **`WaitUntil(condition, timeoutMs)`** — spins until the condition holds or the timeout elapses, returning the
+- **`WaitUntil(condition, timeoutMs = 2000)`** — spins until the condition holds or the timeout elapses, returning the
   final value so a failure *asserts* rather than hangs.
 - **`AssertElapsed(actualMs, expectedMs, tolMs)`** — asserts a measured wall-clock duration is within a
   *generous* tolerance: shared-machine real-time waits run long under load, so you assert the clock tracks real
@@ -89,23 +103,25 @@ Two helpers make real-time assertions robust (see `Kernel.Tests/TestSupport.cs`)
 
 The one place you *don't* need the real clock is the
 [event queue](#/guide/event-queue-and-scheduling): it is a pure data structure, driven synchronously by feeding it
-a "now" and calling **`ProcessDue(nowUs)`** — no threads, no waiting. That keeps scheduling logic fast and
+a "now" and calling **`ProcessDue(nowUs)`** on a `new EventQueue(maxCapacity)` — no threads, no waiting. That keeps scheduling logic fast and
 deterministic to test even though the surrounding system is real-time.
 
 ### The wider suite
 
-The repository ships a full suite you can mirror:
+The framework repository ships a full **NUnit** suite you can mirror:
 
 | Project | Covers |
 |---|---|
-| `Kernel.Tests` | clock, SimSite, event queue, services, logging, the `SimulatorBase` lifecycle |
-| `CodeGen.Tests` | each generator (simulator, knob, plottable, config, reference, service) via a Roslyn harness |
+| `Kernel.Tests` | clock, SimSite, event queue, primitives, services (sim-paced and loosely coupled), global events, logging, the `SimulatorBase` lifecycle |
+| `CodeGen.Tests` | each generator (simulator, events, knob, plottable, parameter, reference, service) via a Roslyn harness, plus a full pipeline compile |
 | `Hosting.Tests` | packing a simulator and loading it from a `.nupkg` |
 
-Run them all with:
+The test projects sit outside `SimulaSharp.slnx`, so run each one:
 
 ```powershell
-dotnet test
+dotnet test Kernel.Tests/Kernel.Tests.csproj
+dotnet test CodeGen.Tests/CodeGen.Tests.csproj
+dotnet test Hosting.Tests/Hosting.Tests.csproj
 ```
 
 Next: the day-to-day rhythm — **[The dev loop](#/guide/dev-loop)**.

@@ -1,14 +1,15 @@
 # Roadmap
 
-Where SimulaSharp is today, and what is deferred by design. Kept honest and short.
+Where SimulaSharp is today (release **0.5.3**), and what is deferred by design. Kept honest and short.
 
 ## What exists today
 
 | Piece | Status |
 |---|---|
-| **Kernel** (`SimulaSharp.Kernel`) | The runtime: the hard-real-time [`SimClock`](#/api/type/SimulaSharp.Kernel.Services.SimClock), parallel single-threaded [`SimSite`](#/guide/simsites-and-actors)s, per-site [event queues](#/guide/event-queue-and-scheduling), [coroutines](#/guide/coroutines), [associations](#/guide/associations) (`Container<T>` / `[Reference<T>]` / `[CrossReference<T>]`), [knobs & plottables](#/guide/observability), config binding, and [structured logging](#/guide/observability-design). |
-| **CodeGen** (`SimulaSharp.CodeGen`) | Roslyn source generators: the `<Name>Simulator`, `<Type>Ref` accessors, knob/plottable/config binders, and service interaction surfaces — with strict build-time validation (`SIM001`–`SIM020`). |
+| **Kernel** (`SimulaSharp.Kernel`) | The runtime: the hard-real-time [`SimClock`](#/api/type/SimulaSharp.Kernel.Services.SimClock), parallel single-threaded [`SimSite`](#/guide/simsites-and-actors)s, per-site [event queues](#/guide/event-queue-and-scheduling), [coroutines](#/guide/coroutines), [associations](#/guide/associations) (`[Contains<T>]` / `[Reference<T>]` / `[CrossReference<T>]`), [services](#/guide/services) (sim-paced and loosely coupled), [global events](#/guide/events), [knobs & plottables](#/guide/observability), [parameters](#/guide/configuration), a per-site error channel, and [structured logging](#/guide/observability-design). |
+| **CodeGen** (`SimulaSharp.CodeGen`) | Nine Roslyn source generators: the `<Name>Simulator`, containment and reference wiring, the guarded `<Interface>Ref` wrappers, knob/plottable/parameter binders, and service interaction surfaces — with strict build-time validation (`SIM001`–`SIM030`). |
 | **Hosting** (`SimulaSharp.Hosting`) | Loads a packed simulator (`.nupkg`) into a collectible `AssemblyLoadContext`, discovers the simulators, and can unload/reload without restarting. |
+| **NuGet packages** | One `SimulaSharp` meta-package (Kernel + CodeGen, with the `<SimAssembly>` build item) plus the separate `SimulaSharp.Hosting`, all MIT-licensed, built by `pack.ps1`. |
 | **Test suites** | `Kernel.Tests`, `CodeGen.Tests`, and `Hosting.Tests` — real-time kernel tests, per-generator Roslyn-harness tests, and pack/load tests. |
 | **This guide** | The definitive guide to *designing* a simulator: concepts, design chapters, worked scenarios, and this getting-started/reference chapter. |
 

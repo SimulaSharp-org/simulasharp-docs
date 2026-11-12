@@ -24,8 +24,8 @@ Three commitments shape everything in this guide:
 - **Actors, not shared state.** The system is partitioned into independent **SimSites**, each running on its own
   thread. Work inside a site is serialized and lock-free; work *between* sites is passed as messages. You never write
   a lock.
-- **Compile-time wiring, not runtime reflection.** Associations, cross-actor calls, observability, config binding, and
-  the whole assembly are **generated at build time**. Mistakes in your topology are *compile errors*, not runtime
+- **Compile-time wiring, not runtime reflection.** Associations, cross-actor calls, observability, parameter binding,
+  global events, and the whole assembly are **generated at build time**. Mistakes in your topology are *compile errors*, not runtime
   surprises, and the shipped product carries no YAML parser or reflection.
 
 ```mermaid
@@ -38,8 +38,8 @@ flowchart TB
   end
   subgraph GEN["What the generator builds"]
     SIM["&lt;Name&gt;Simulator"]
-    REF["&lt;Type&gt;Ref accessors"]
-    BIND["knob / plottable binders"]
+    REF["&lt;Interface&gt;Ref wrappers"]
+    BIND["knob / plottable / parameter binders"]
   end
   subgraph RUN["What runs (the Kernel)"]
     CLK["SimClock"]
@@ -55,12 +55,14 @@ flowchart TB
 ## The three parts
 
 SimulaSharp is delivered as three pieces. As an author you touch the first two directly; the third is where your
-finished simulator eventually runs.
+finished simulator eventually runs. You do not reference the first two one by one: the single **`SimulaSharp`**
+meta-package brings in both (see [project setup](#/guide/project-setup)). Hosting is a separate package, needed only
+by a host.
 
 | Part | Assembly | Role |
 |------|----------|------|
-| **Kernel** | `SimulaSharp.Kernel` | The runtime: the real-time [`SimClock`](#/api/type/SimulaSharp.Kernel.Services.SimClock), parallel single-threaded [`SimSite`](#/api/type/SimulaSharp.Kernel.Services.SimSite)s, per-site [event queues](#/guide/event-queue-and-scheduling), [coroutines](#/guide/coroutines), [associations](#/guide/associations), [knobs & plottables](#/guide/observability), and logging. |
-| **CodeGen** | `SimulaSharp.CodeGen` | Roslyn source generators that turn your annotated models + the YAML assembly into wiring: the `<Name>Simulator`, `<Type>Ref` accessors, knob/plottable binders, and config binding — all validated at build time. |
+| **Kernel** | `SimulaSharp.Kernel` | The runtime: the real-time [`SimClock`](#/api/type/SimulaSharp.Kernel.Services.SimClock), parallel single-threaded [`SimSite`](#/api/type/SimulaSharp.Kernel.Services.SimSite)s, per-site [event queues](#/guide/event-queue-and-scheduling), [coroutines](#/guide/coroutines), [associations](#/guide/associations), [services](#/guide/services), [global events](#/guide/events), [knobs & plottables](#/guide/observability), [parameters](#/guide/configuration), and logging. |
+| **CodeGen** | `SimulaSharp.CodeGen` | Roslyn source generators that turn your annotated models + the YAML assembly into wiring: the `<Name>Simulator`, the guarded `<Interface>Ref` wrappers for cross-site references, service plumbing, knob/plottable/parameter binders — all validated at build time (`SIM001`–`SIM030`). |
 | **Hosting** | `SimulaSharp.Hosting` | Loads a *packed* simulator (a `.nupkg`) into a collectible context so a host — ultimately the MMI — can run, observe, and hot-reload it. |
 
 ## Who this guide is for

@@ -51,9 +51,11 @@ graph LR
 `OnTick`** — those belong to a different framework. A SimulaSharp model reacts to *scheduled events*, not to a
 per-frame callback.
 
-- **`virtual void Configure()`** — called once by the framework **after** construction, assembly wiring and config
-  filling are all complete. This is where a model registers its long-running work on the scheduler, precomputes
-  values, subscribes to services, and does any other setup. Everything is wired by the time it runs.
+- **`virtual void Configure()`** — called once by the framework **after** construction, assembly wiring and parameter
+  filling are all complete. The generated simulator assembles everything in its constructor; when the host then calls
+  the simulator's `Configure()`, it configures every service first and then every model. This is where a model
+  registers its long-running work on the scheduler, precomputes values, subscribes to services, and does any other
+  setup. Everything is wired by the time it runs.
 - **`virtual void Dispose()`** — deinitialization. Called during teardown, *after* the site threads have stopped.
   Release resources here.
 
@@ -95,7 +97,7 @@ public sealed partial class Pump(IClock c, IScheduler s, ILogger l) : ModelBase(
     {
         long now = TimeKeeper.SimNowUs;      // read time — never advance it
         _flow = ComputeFlow(now);
-        Logger.Trace($"flow={_flow:F2} @ {now}us");
+        Logger.LogDebug($"flow={_flow:F2} @ {now}us");
     }
 
     private double ComputeFlow(long nowUs) => /* … */ 0.0;
@@ -104,7 +106,8 @@ public sealed partial class Pump(IClock c, IScheduler s, ILogger l) : ModelBase(
 
 The scheduler ([`IScheduler`](#/api/type/SimulaSharp.Kernel.Services.IScheduler)) offers one-shots
 (`AddEvent`), periodics (`AddPeriodicEvent`), coroutine processes (`AddCoroutine`), and mission-time–anchored variants
-(`AddEventAtMission`, …). All return an event id you can `RemoveEvent`. See
+(`AddEventAtMission`, `AddPeriodicEventAtMission`, `AddCoroutineAtMission`). All return an event id you can
+`RemoveEvent`, or `-1` when the site's event queue is full (or a mission-time instant is already past). See
 [the event queue & scheduling](#/guide/event-queue-and-scheduling) and [coroutines](#/guide/coroutines) for the full
 surface.
 
@@ -112,17 +115,18 @@ surface.
   (see [time & the clock](#/guide/time-and-clock)). If you need the elapsed interval, stamp the last time yourself and
   subtract.
 
-## Models that use codegen must be `partial`
+## Every model must be `partial`
 
-Any model that touches a code-generated attribute — a knob, a `[Parameter]`, a `[Reference<T>]`/`[CrossReference<T>]`
-(whose accessor is generated) — must be declared `partial`, so the generator can weave its half into your class. A model with *no*
-generated members can be `sealed` with no `partial`. When in doubt, mark it `partial`; it costs nothing.
+Every model must be declared `partial`, so the generators can weave their half into your class: the container,
+reference, knob, plottable and parameter accessors. This holds even for a model with *no* generated members — the
+generated simulator applies parameters to every instance, so the parameter generator emits a (possibly empty) method into
+each model. A model that is not `partial` is a build error (`SIM029`). `sealed partial` is fine.
 
 ```csharp
 [Contains<Unit>("Units")]                                     // containment (below) — no field needed
 public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
-    [Parameter(0)] public int Capacity { get; set; }              // generated config binding
+    [Parameter(0)] public int Capacity { get; set; }              // generated parameter binding, default 0
 }
 ```
 
@@ -140,10 +144,28 @@ public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
 }
 ```
 
-The generated `Units` accessor is an [`IReadOnlyList<T>`](#/api/type/System.Collections.Generic.IReadOnlyList`1) —
-you index it, enumerate it, and walk the tree — but there is **no `Add`**: it is `init`-only, filled once by the
-generated simulator while building the tree from the [assembly](#/guide/the-assembly), and immutable to your model
-thereafter.
+The generated accessor is `public Container<Unit> Units { get; init; }`, starting as `Container<Unit>.Empty`.
+`Container<T>` is an `IReadOnlyList<T>` — you index it,
+enumerate it, and walk the tree — but there is **no `Add`**: it is `init`-only, filled once by the generated simulator
+while building the tree from the [assembly](#/guide/the-assembly), and immutable to your model thereafter. The tree is
+built **bottom-up**: the children are constructed first, then handed to the parent through the `init` accessor.
+
+A model may carry several `[Contains<T>]` attributes, one per container. In the YAML, each container is filled from the
+instance's `Models:` block, keyed by the container name:
+
+```yaml
+- Name: Plant1
+  Type: Demo.Plant
+  Models:
+    - Units:                 # the [Contains<Unit>("Units")] container
+        - Name: UnitA
+          Type: Demo.Unit
+        - Name: UnitB
+          Type: Demo.Unit
+```
+
+The generator checks this wiring at build time: an unknown container name is `SIM007`, a child not assignable to `T`
+is `SIM008`, and a child that is not a model at all is `SIM009`.
 
 - **Key point.** The `[Contains<T>("Name")]` decorator *is* the declaration — no container field, no `_`-prefixed
   sibling. `T` may be a concrete model **or a framework-pure interface** (there is no `IModel` constraint); the
@@ -162,9 +184,10 @@ graph TD
 
 ## One subtree, one SimSite, one thread
 
-This is the load-bearing rule. **A root model owns a SimSite, and its entire containment subtree shares that one
-site** — the generated simulator constructs every model in the subtree with the *same* `Scheduler`. There is nothing
-to propagate: `Scheduler` is just handed to each child's constructor.
+This is the load-bearing rule. **The assembly places each root model on a SimSite, and its entire containment subtree
+shares that one site** — the generated simulator constructs every model in the subtree with the *same* `Scheduler`.
+There is nothing to propagate: `Scheduler` is just handed to each child's constructor. Several roots may share one
+site; they then share its thread too.
 
 ```mermaid
 graph TD
@@ -197,11 +220,11 @@ Because the whole subtree lives on one thread:
 - **Intra-subtree calls are direct and lock-free.** A `Plant` calling into one of its `Unit`s (or a `Unit` calling a
   sibling reached through the tree) is a plain synchronous method call on the same thread. No message, no marshalling,
   no lock — you never write a lock inside a subtree.
-- **Cross-subtree calls are marshalled.** Reaching a model on *another* site (the blue → green dotted arrow above) goes
+- **Cross-site calls are marshalled.** Reaching a model on *another* site (the blue → green dotted arrow above) goes
   through that site's inbox. That is what `[CrossReference<T>]` and its generated `Ref` accessors are for — covered in
   [associations](#/guide/associations).
 
-| Call | Same subtree (same site) | Different subtree (different site) |
+| Call | Same site (same subtree, or another root on the site) | Different site |
 |---|---|---|
 | Mechanism | direct method call | message into target's inbox |
 | Concurrency | serialized on the one thread | runs on the *target's* thread |
