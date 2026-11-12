@@ -1,12 +1,26 @@
 import { useEffect, useRef } from "react";
 import { marked } from "marked";
 import mermaid from "mermaid";
+import hljs from "highlight.js/lib/core";
+import csharp from "highlight.js/lib/languages/csharp";
+import yaml from "highlight.js/lib/languages/yaml";
+import xml from "highlight.js/lib/languages/xml";
+import powershell from "highlight.js/lib/languages/powershell";
+import bash from "highlight.js/lib/languages/bash";
+import "highlight.js/styles/github-dark.css";
 
 mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose", themeVariables: { fontSize: "13px" } });
 
+// Only the languages the guide's code fences use; the core build keeps the bundle small.
+hljs.registerLanguage("csharp", csharp);
+hljs.registerLanguage("yaml", yaml);
+hljs.registerLanguage("xml", xml);
+hljs.registerLanguage("powershell", powershell);
+hljs.registerLanguage("bash", bash);
+
 let mid = 0;
 
-/** Render a markdown string to HTML, then upgrade ```mermaid``` fences to rendered diagrams. */
+/** Render a markdown string to HTML, highlight the code fences, and upgrade ```mermaid``` fences to rendered diagrams. */
 export function Markdown({ source }: { source: string }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -14,6 +28,10 @@ export function Markdown({ source }: { source: string }) {
     const host = ref.current;
     if (!host) return;
     host.innerHTML = marked.parse(source);
+    host.querySelectorAll<HTMLElement>("pre code[class^='language-']").forEach((code) => {
+      const lang = code.className.slice("language-".length);
+      if (hljs.getLanguage(lang)) hljs.highlightElement(code);
+    });
     host.querySelectorAll<HTMLElement>("code.language-mermaid").forEach(async (code) => {
       const pre = code.closest("pre");
       const box = document.createElement("div");
