@@ -55,7 +55,7 @@ export function ApiOverview() {
   return (
     <div className="md">
       <h1>API reference</h1>
-      <p className="sub">{model.assemblies.length} assemblies · {model.namespaces.length} namespaces · {typeCount} types. Generated from the projects' XML documentation ({model.generated}).</p>
+      <p className="sub">{model.assemblies.length} assemblies · {model.namespaces.length} namespaces · {typeCount} types. Generated from the projects' XML documentation.</p>
       <h2>Namespaces</h2>
       <div className="cards">
         {model.namespaces.map((ns) => (
