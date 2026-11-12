@@ -54,8 +54,8 @@ New here? Start with the [introduction](#/guide/introduction) and [the big pictu
 
 | Part | Role |
 |------|------|
-| **Kernel** | The runtime: the real-time \`SimClock\`, parallel single-threaded \`SimSite\`s, per-site event queues, coroutines, associations, knobs/plottables, logging. |
-| **CodeGen** | Roslyn source generators that turn annotated models + a YAML assembly into the wiring: the \`<Name>Simulator\`, \`<Type>Ref\` accessors, knob/plottable binders, config binding. |
+| **Kernel** | The runtime: the real-time \`SimClock\`, parallel single-threaded \`SimSite\`s, per-site event queues, coroutines, services, global events, associations, knobs/plottables/parameters, logging. |
+| **CodeGen** | Roslyn source generators that turn annotated models + a YAML assembly into the wiring: the \`<Name>Simulator\`, the \`<Interface>Ref\` classes, and the knob/plottable/parameter binders. |
 | **Hosting** | Loads a packed simulator (\`.nupkg\`) into a collectible context so a host (the MMI) can run and hot-reload it. |
 `;
 
