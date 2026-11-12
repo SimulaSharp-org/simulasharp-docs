@@ -41,7 +41,7 @@ graph TB
   EN -. "ServiceEvent" .-> PA
   EN -. "ServiceEvent" .-> PB
   EN -. "ServiceEvent" .-> A
-  C -. "Reference&lt;Eps&gt; ⇒ marshalled" .-> E
+  C -. "CrossReference&lt;IEps&gt; ⇒ marshalled" .-> E
 
   classDef s1 fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
   classDef s2 fill:#dcfce7,stroke:#16a34a,color:#14532d;
@@ -56,8 +56,8 @@ graph TB
 ## The model set (elided)
 
 The full bodies are the same integrator/subscriber/reference patterns from the earlier scenarios;
-here are the shapes and what each exposes. Every model that carries a knob, plottable, config,
-`[ServiceRef]`, or `[CrossReference<T>]` is **`partial`**.
+here are the shapes and what each exposes. Every model and service is **`partial`** — the generator
+adds code to each of them, and a non-`partial` one is a build error (`SIM029`).
 
 ```csharp
 namespace Bird;
@@ -134,8 +134,8 @@ public partial class Environment(IClock c, ILogger l) : ServiceBase(c, l, "Envir
 ## The assembly
 
 The full structure, showing every kind of node — services, nested sites, containment (`Models:`
-lists of `{ containerName: [children] }`), a cross-site reference (`Refs:`), and service bindings
-(`Deps:`).
+lists of `{ containerName: [children] }`), a cross-site reference (`CRefs:`), service bindings
+(`Deps:`), and parameter values (`Config:`).
 
 ```yaml
 # bird.simassembly.yaml
@@ -179,7 +179,7 @@ Simulator:
       Models:
         - Name: Radio
           Type: Bird.Comms
-          Refs:
+          CRefs:
             - Power:
                 - Bird.Power              # cross-site reference to the Eps root
 ```
@@ -187,10 +187,12 @@ Simulator:
 Running it is the plain [lifecycle](#/guide/simulator-lifecycle); all four threads run in parallel:
 
 ```csharp
+using Bird;
+
 using var sim = new BirdSimulator();
 sim.Configure();
 sim.Start();
-sim.Clock.RunFor(60_000_000);            // one real minute of flight
+sim.RunFor(60_000_000);                  // one real minute of flight
 ```
 
 ## Why this partition
@@ -207,7 +209,8 @@ The site boundaries *are* the design. Each choice is a threading and coupling de
   right cost for a loose, infrequent coupling. Contrast with the tight EPS-internal calls above.
 - **Environment is a service, not a model.** Sun angle and eclipse are shared by panels *and* ADCS,
   owned by none — the textbook case for a [service](#/guide/services). Broadcasting via
-  `[ServiceEvent]` fans one update out to every subscriber's own thread.
+  `[ServiceEvent]` fans one update out to every subscriber's own thread. (A notification with no
+  owning service at all, raised from many places, is a [global event](#/guide/events) instead.)
 
 The rule of thumb: **things that chatter share a site; things that are independent get their own;
 things shared by many with a life of their own become a service.** The full reasoning is in
@@ -220,7 +223,9 @@ things shared by many with a life of their own become a service.** The full reas
 - **Read-only knobs** for live indicators the operator watches but cannot set (`Vbus`, `Charge`,
   `Rpm`).
 - **Read/write knobs** for the few things an operator drives: ADCS `Mode`, Comms `Transmit`.
-- **Config** for build-time constants that vary per instance: battery `CapacityWh`, wheel `Inertia`.
+- **Parameters** (`[Parameter]`, set from the `Config:` block) for build-time constants that vary
+  per instance: battery `CapacityWh`, wheel `Inertia`. They are listed by `sim.GetParams()` and can
+  be overridden with `sim.SetParam(...)` before `Configure()`.
 
 ## What to notice
 
@@ -229,8 +234,9 @@ things shared by many with a life of their own become a service.** The full reas
   the earlier scenarios composed.
 - **Boundaries are your parallelism *and* your locking story.** You never write a lock; you *choose*
   a partition, and the framework serializes each site for you.
-- **The generator checks the whole thing.** An unknown type, a container/element mismatch, a dangling
-  `Refs:` path, a `[ServiceRef]` bound to a missing service — each is a **compile error**
-  (`SIM001`–`SIM020`), not a runtime surprise.
+- **The generator checks the whole thing.** An unknown type (`SIM004`), a container/element mismatch
+  (`SIM008`), a dangling `CRefs:` path (`SIM011`), a `Deps:` entry naming a missing service
+  (`SIM014`) — each is a **compile error** (the full range is `SIM001`–`SIM030`), not a runtime
+  surprise.
 
 Next: ship it — **[pack & load](#/guide/scenario-pack-and-load)**.

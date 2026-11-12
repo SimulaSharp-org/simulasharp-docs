@@ -7,8 +7,8 @@ reaching into a running model tree from the outside:
   **trigger** you can fire.
 - **Plottables** — the unit of *plot telemetry*. A named **numeric sample** a plot consumer sweeps over time.
 
-Both are declared the same way — an attribute on a model member — and both are **discovered automatically** when the
-simulator initializes. Neither is pushed by the kernel: a knob channel is *notified* on change, and a plot consumer
+Both are declared the same way — an attribute on a model or service member — and both are **discovered automatically**
+when the simulator is constructed. Neither is pushed by the kernel: a knob channel is *notified* on change, and a plot consumer
 *pulls* at its own cadence. Everything crosses the thread boundary through **lock-free volatile reads and writes**, so
 observing a model never blocks the site running it.
 
@@ -48,9 +48,9 @@ binder.
 > `Scheduler` or a service's `Site`, each being that entity's own thread. For a loosely-coupled service the `Site` is
 > a serial executor, so a trigger runs *best-effort* when the dispatcher is free — keep trigger handlers non-blocking.
 
-### The six attributes
+### The five attributes
 
-There are six knob attributes. Five sit on a `partial` **property** and expose a value; one sits on a **method** and
+There are five knob attributes. Four sit on a `partial` **property** and expose a value; one sits on a **method** and
 exposes a trigger. All of them derive from
 [`KnobAttribute`](#/api/type/SimulaSharp.Kernel.Attributes.KnobAttribute) and share two options: **`Label`** (the
 display text) and **`IsReadOnly`** (display-only vs. read/write).
@@ -64,8 +64,14 @@ display text) and **`IsReadOnly`** (display-only vs. read/write).
 | `[TriggerKnob("…")]` | `void Handle_X()` method | `Trigger` | — |
 
 `KnobType` is a [`NumberKnobType`](#/api/type/SimulaSharp.Kernel.Attributes.NumberKnobType) — `Input` (a plain field),
-`Slider`, or `Rotary` — a hint to the UI carried onto the knob's `Style`. Bounds and formatting options travel onto the
-knob as `Min`/`Max`/`DecimalPlaces`/`MaxLength`/… so a renderer can build the right control without knowing the model.
+`Slider`, or `Rotary` — a hint to the UI. The `Knob` has a `Style` slot meant for it, but in 0.5.3 the generator does
+not fill it yet, so `Knob.Style` is always `null` and a renderer cannot see the hint. Bounds and formatting options
+travel onto the knob as `Min`/`Max` (widened to `double`), `DecimalPlaces`, `MaxLength`, `AllowEmpty` and
+`AllowNewLine`, so a renderer can build the right control without knowing the model. Only the options you **set
+explicitly** in the attribute travel; an option left at its attribute default stays `null` on the `Knob`.
+
+A property knob is only picked up on a **partial property definition** (`public partial int Speed { get; set; }`). The
+generator silently skips a knob attribute on an ordinary property.
 
 > **Consequence for design.** A knob's kind is fixed by *which attribute* you chose, not by the field's CLR type alone.
 > A `bool` becomes a `Bool` knob only under `[TickBoxKnob]`; a `double` becomes a `Number` knob under `[NumberKnob<double>]`.
@@ -91,12 +97,13 @@ binder, not in a convention the MMI has to honour.
 
 ### What the generator materializes
 
-For each value knob the `KnobGenerator` emits three things on your partial class:
+For each value knob the `KnobGenerator` emits four things on your partial class:
 
 1. a **private volatile backing field** (`__Speed`);
 2. the **partial property body** — a volatile *get*, and (if you declared a setter) a volatile *set* that also raises
    the knob's `Changed`;
-3. a **`Knob` binder**, built inside an explicit
+3. a **`protected event Action SpeedChanged`** for model-side reactions (see below);
+4. a **`Knob` binder**, built inside an explicit
    [`IKnobProvider.CollectKnobs`](#/api/type/SimulaSharp.Kernel.Knobs.IKnobProvider) the simulator calls during
    discovery.
 
@@ -110,6 +117,7 @@ public partial int Speed
     get => Volatile.Read(ref __Speed);
     set { Volatile.Write(ref __Speed, value); __SpeedKnob?.RaiseChanged(); }
 }
+protected event Action SpeedChanged { add => __SpeedKnob!.Changed += value; remove => __SpeedKnob!.Changed -= value; }
 
 void IKnobProvider.CollectKnobs(string prefix, ICollection<Knob> into)
 {
@@ -117,7 +125,7 @@ void IKnobProvider.CollectKnobs(string prefix, ICollection<Knob> into)
     {
         Path = prefix + ".Speed",       // e.g. "Plant.Plant1.Speed"
         Label = "Speed", Kind = KnobKind.Number, IsReadOnly = false,
-        ValueType = "System.Int32", Min = 0, Max = 100,
+        ValueType = "int", Min = 0, Max = 100,      // ValueType is the C# display name of the property type
         ReadBoxed  = () => Volatile.Read(ref __Speed),
         WriteBoxed = v => { Volatile.Write(ref __Speed, (int)v!); Scheduler.Post(() => __SpeedKnob!.RaiseChanged()); },
     };
@@ -125,7 +133,7 @@ void IKnobProvider.CollectKnobs(string prefix, ICollection<Knob> into)
 }
 ```
 
-Two subtleties worth internalizing:
+Three subtleties worth internalizing:
 
 - **The model's own property is unboxed.** Your model code reads and writes `Speed` as a plain `int` straight off the
   field. Only the MMI path (`ReadBoxed`/`WriteBoxed`) boxes. You pay for boxing only when the outside world looks.
@@ -133,17 +141,21 @@ Two subtleties worth internalizing:
   any thread), but posts the `Changed` notification onto the entity's **own thread** — a model's `Scheduler`, a
   service's `Site`. So any logic subscribed to the change runs where all that entity's work runs — lock-free, on its
   one thread. (The sketch above shows a model, hence `Scheduler`; a service emits `Site.Post`.)
+- **The boxed value must be the exact type.** `WriteBoxed` unboxes with a plain cast (`(int)v!`), so writing a boxed
+  `long` into an `int` knob throws `InvalidCastException`. Use `ValueType` to convert before you write.
 
 ### Model-side reaction to a knob change
 
 Alongside the property, the generator emits a `protected event Action <Name>Changed` you can subscribe to for cascaded
-logic. Because the notification is posted onto the site thread, your handler runs there — safe to touch model state.
-Subscribe in `Configure()`:
+logic. It is a thin forwarder onto the knob's `Changed`, so it fires both when the MMI writes and when your own code
+sets the property. An MMI write posts the notification onto the site thread, so your handler runs there — safe to touch
+model state. Subscribe in `Configure()` (the knob binder only exists once the simulator has collected the knobs, which
+happens after your model's constructor):
 
 ```csharp
 public override void Configure()
 {
-    SpeedChanged += () => Log.Info($"speed is now {Speed}");   // runs on the site thread
+    SpeedChanged += () => Logger.LogInformation($"speed is now {Speed}");   // runs on the site thread
 }
 ```
 
@@ -151,7 +163,8 @@ public override void Configure()
 
 A **trigger knob** exposes a *method*, not a value. You write a parameterless `void Handle_X()` and attribute it; the
 generator emits a public `X()` that runs your handler and raises the "triggered" notification, plus a `Trigger`-kind
-`Knob` whose `Invoke` posts `X()` onto the site thread.
+`Knob` whose `Invoke` posts `X()` onto the site thread. The `Handle_` prefix is the contract: a `[TriggerKnob]` method
+whose name does not start with `Handle_`, or that takes parameters or returns a value, is silently ignored.
 
 ```csharp
 [TriggerKnob("Reset")]
@@ -162,7 +175,8 @@ protected void Handle_Reset() => Vbus = 0;
 Firing it from the MMI ([`Knob.Trigger`](#/api/type/SimulaSharp.Kernel.Knobs.Knob)) posts `Reset()` onto the owning
 entity's thread (a model's `Scheduler`, a service's `Site`); the handler runs there, then every knob channel is notified
 — so a trigger *lights up* in the UI regardless of who fired it (operator, or the entity calling `Reset()` directly).
-Triggers carry no `ValueType`, `ReadBoxed`, or `WriteBoxed`.
+Triggers carry no `ValueType`, `ReadBoxed`, or `WriteBoxed`. `IsReadOnly` on a trigger is only a rendering hint (a
+plain light instead of a button): the generator still sets `Invoke`, so `Knob.Trigger()` fires it either way.
 
 ### Enum knobs (dropdowns)
 
@@ -178,14 +192,17 @@ public enum Polarisation { RHCP, LHCP }
 
 The knob's value is the selected **underlying integer**, exchanged as `long` (matching
 [`KnobOption.Value`](#/api/type/SimulaSharp.Kernel.Knobs.KnobOption)) — so a generic MMI never needs your enum type; it
-reads the current value, matches it to an option for the label, and writes back the chosen option's value. Under the
+reads the current value, matches it to an option for the label, and writes back the chosen option's value (pass it as
+a boxed `long`, e.g. `knob.Write(option.Value)`; another boxed type fails the unboxing cast). Under the
 hood the value is stored in the enum's underlying-integer field (a `Volatile` read/write can't take an enum directly),
 and your model still reads and writes the typed enum property as usual. `[EnumKnob]` on a non-enum property is a build
 error, [`SIM030`](#/guide/assembly-yaml-reference).
 
-### A model exposing all four surfaces
+### A model exposing every surface
 
 ```csharp
+public enum Polarisation { RHCP, LHCP }
+
 public partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     // read/write number, presented as a slider
@@ -195,6 +212,14 @@ public partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBase(c, s
     // read/write toggle
     [TickBoxKnob("Heater")]
     public partial bool Heater { get; set; }
+
+    // read/write dropdown
+    [EnumKnob("Polarisation")]
+    public partial Polarisation Pol { get; set; }
+
+    // read-only status label
+    [TextKnob("Status", IsReadOnly = true)]
+    public partial string Status { get; set; }
 
     // read-only float that is ALSO a plottable — one field, two surfaces (see below)
     [NumberKnob<double>("Bus voltage", DecimalPlaces = 3, IsReadOnly = true)]
@@ -211,15 +236,18 @@ public partial class Battery(IClock c, IScheduler s, ILogger l) : ModelBase(c, s
 
 ## Discovery and the knob channel
 
-Knobs are **discovered in the constructor**. As the generated constructor builds the model tree, it calls
-`CollectKnobsFrom(model, fullPath)` on each instance; models that declare knobs implement `IKnobProvider` and stamp
-each binder with the instance's **full dotted path** (`SimName.Path.To.Instance.Member`). The results accumulate into
+Knobs are **discovered in the constructor**. As the generated constructor builds the services and the model tree, it
+calls `CollectKnobsFrom(instance, fullPath)` on each instance; models and services that declare knobs implement
+`IKnobProvider` and stamp each binder with the instance's **full dotted path**. For a model that is
+`SimName.Model.Child.Member` — the simulator name, then the instance names down the containment tree (the site name and
+the container name are not part of it). For a service it is `SimName.Service.Member`. The results accumulate into
 [`ISimulator.Knobs`](#/api/type/SimulaSharp.Kernel.Services.ISimulator).
 
 The MMI plugs in an [`IKnobChannel`](#/api/type/SimulaSharp.Kernel.Knobs.IKnobChannel) via `RegisterKnobChannel`. Since
 knobs are discovered in the constructor, they already exist by the time you can register a channel — so it receives
-`OnKnobsDiscovered` immediately. The simulator hands the channel the full knob list once, then subscribes it to every
-knob's `Changed`, so it gets an `OnKnobChanged(knob)` on each change.
+`OnKnobsDiscovered` immediately, **synchronously inside `RegisterKnobChannel`, on the caller's thread**. The simulator
+hands the channel the full knob list once, then subscribes it to every knob's `Changed`, so it gets an
+`OnKnobChanged(knob)` on each change.
 
 ```mermaid
 sequenceDiagram
@@ -234,7 +262,7 @@ sequenceDiagram
   Model-->>Sim: Knob binders (stamped with path)
   deactivate Sim
   Host->>Sim: RegisterKnobChannel(ch)
-  Sim->>Ch: OnKnobsDiscovered(knobs)
+  Sim->>Ch: OnKnobsDiscovered(knobs)  (on the host's thread)
   Sim->>Sim: knob.Changed += () => ch.OnKnobChanged(knob)
 
   Note over Host,Model: later — operator turns a knob
@@ -244,10 +272,12 @@ sequenceDiagram
   Model->>Ch: OnKnobChanged(knob)  (on the site thread)
 ```
 
-> **Consequence for design.** `OnKnobsDiscovered` and `OnKnobChanged` both run on a **model's site thread**. A channel
-> implementation must be **non-blocking — enqueue and return.** If it blocks, it stalls the site, and a stalled site
-> stops firing that subsystem's events. The MMI's job here is to marshal into its own world, not to do work in the
-> callback.
+> **Consequence for design.** `OnKnobChanged` runs on the thread that raised the change: the owner's site thread for an
+> MMI write or a trigger, and whichever thread set the property for a model-side write (normally the model's own site).
+> A channel implementation must be **non-blocking — enqueue and return.** If it blocks, it stalls the site, and a
+> stalled site stops firing that subsystem's events. The MMI's job here is to marshal into its own world, not to do
+> work in the callback. (`OnKnobsDiscovered` is the exception: it runs once, on the thread that registered the
+> channel.)
 
 ---
 
@@ -257,7 +287,8 @@ A **plottable** is the plot consumer's unit of telemetry: a named numeric series
 `[Plottable("label", Unit = "V")]` on a `partial` numeric property; the
 [`PlottableGenerator`](#/api/type/SimulaSharp.CodeGen.PlottableGenerator) builds a
 [`Plottable`](#/api/type/SimulaSharp.Kernel.Plotting.Plottable) binder whose `Sample` delegate is a **volatile read
-projected to `double`**.
+projected to `double`**. The binder also carries `Label`, `Unit` (or `null`) and `ValueType` (the source type's C#
+name, before projection).
 
 Like knobs, plottables can be declared on a **model or a service**. Sampling is a lock-free volatile read on the plot
 consumer's own thread — nothing marshals onto the owner — so a service's plottables are swept exactly like a model's.
@@ -266,7 +297,7 @@ Supported member types:
 
 | Source type | Projection to `double` |
 |---|---|
-| any numeric (`int`, `long`, `float`, `double`, `decimal`, …) | read as-is |
+| `byte`, `sbyte`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `float`, `double`, `decimal` | cast to `double` |
 | `bool` | `true → 1.0`, `false → 0.0` |
 | `enum` | its underlying numeric value |
 
@@ -289,7 +320,9 @@ flowchart TB
 ```
 
 When `[Plottable]` sits on a partial property with **no** knob attribute, the plottable generator materializes the
-volatile get/set itself (no change-notify — a plottable is observe-only).
+volatile get/set itself (no change-notify — a plottable is observe-only; an `enum` is backed by its underlying integer).
+`[Plottable]` is also accepted on an ordinary, non-partial property: then nothing is materialized and `Sample` simply
+calls your getter on the consumer's thread, so the volatile guarantee is yours to keep.
 
 ### Sampling: one mission-time stamp per sweep
 
@@ -334,10 +367,10 @@ Plottables, like knobs, are discovered at construction (`CollectPlottablesFrom`)
 | | Knob | Plottable |
 |---|---|---|
 | Purpose | observe **and** control | plot telemetry (observe only) |
-| Declared with | `[TickBox/Integer/Float/Text/Trigger Knob]` | `[Plottable]` |
+| Declared with | `[TickBoxKnob]`, `[NumberKnob<T>]`, `[TextKnob]`, `[EnumKnob]`, `[TriggerKnob]` | `[Plottable]` |
 | Direction | read, read/write, or trigger | read only |
 | Delivery | **push** — `IKnobChannel` notified on change | **pull** — consumer calls `SamplePlottables()` |
-| Value shape | typed (bool/number/text) or a method | projected to `double` |
+| Value shape | typed (bool/number/text/enum as `long`) or a method | projected to `double` |
 | Cross-thread access | lock-free volatile read/write | lock-free volatile read |
 | Exposed on | `ISimulator.Knobs` | `ISimulator.Plottables` |
 | Discovered | at construction | at construction |

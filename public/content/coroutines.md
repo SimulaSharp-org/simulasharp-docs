@@ -40,6 +40,11 @@ atomic with respect to everything else there.
 > - Fall off the end (or `yield break`) and the coroutine is disposed, its slot freed.
 > - It runs on the site's thread like any event: **never block it** — yield time instead of sleeping.
 
+`AddCoroutine` returns the entry's id (the same id for every step of that coroutine), or `-1` if the site's event queue
+is full. `AddCoroutineAtMission(factory, missionTimeUs)` does the same but starts the process at an absolute mission time
+(`-1` if that instant is already past). Models get these on their `Scheduler`; a `ServiceBase` has them on its protected
+`Scheduler` too. A `LooselyCoupledServiceBase` has no sim-time queue, so it cannot run coroutines.
+
 ## Materialized on first fire
 
 One detail matters for timing. You pass `AddCoroutine` a **factory** (`Func<IEnumerator<SimYield>>`), not an
@@ -77,7 +82,9 @@ one — that's the [two-phase ProcessDue](#/guide/event-queue-and-scheduling) ru
 yield return SimYield.Immediate; }` coroutine from starving its site: it yields the thread back every step.
 
 ```csharp
-long CurrentDue += y.DelayUs;   // conceptually: Immediate/Delay just push the due time out
+// In the EventQueue, on the Immediate/Delay branch:
+s.DueTimeUs += y.DelayUs;       // push the slot's due time out (0 => next pass)
+_pq.Enqueue(slot, s.DueTimeUs);
 ```
 
 ## Stepping through Delays
@@ -107,13 +114,14 @@ sequenceDiagram
 
 Note the delays are **relative to the slot's current due**, not to "now". If a step's own body runs at a slightly late
 horizon, the next `Delay` still measures from the *scheduled* due — the same absolute-grid discipline the periodic events
-use, so a chain of delays doesn't accumulate drift.
+use, so a chain of delays doesn't accumulate drift. An `Await` is the exception: it re-arms the slot at the horizon when
+the coroutine resumes, so after an `Await` the next `Delay` measures from that resume instant.
 
 ## Await: parking on a cross-site reply
 
 `SimYield.Await(task)` is how a coroutine waits for something that completes on **another thread** — most often a
 cross-site request that returned a `Task` from [`InjectAsync`](#/guide/simsites-and-actors). Crucially, it parks the
-*coroutine*, not the *thread*: the site keeps spinning and serving everything else while this one process waits.
+*coroutine*, not the *thread*: the site keeps running and serving everything else while this one process waits.
 
 When the coroutine yields an `Await`, the queue does **not** put it back on the time-ordered priority queue. Instead it
 hands the task to the site via a callback (`OnAwait`), and the site arranges the resume:
@@ -173,8 +181,9 @@ double pressure = t.GetAwaiter().GetResult();   // safe: complete by now, won't 
 ```
 
 `GetResult()` won't block here because the coroutine only woke *because* `t` finished. (If `t` faulted, `GetResult()`
-rethrows on your thread — and an unhandled throw in a coroutine step is caught by the queue, which drops and disposes the
-coroutine; see [the event queue](#/guide/event-queue-and-scheduling).)
+rethrows on your thread — and an unhandled throw in a coroutine step is caught by the queue, which logs it at **Error**
+on the site's error channel, then drops and disposes the coroutine; see
+[the event queue](#/guide/event-queue-and-scheduling).)
 
 ## Await with a timeout
 
@@ -220,7 +229,11 @@ cancelled; on timeout the deadline just wins.
 
 **The task is not cancelled on timeout.** A timed-out await leaves the underlying `Task` running — its eventual
 completion is simply discarded (the token is already resolved), so you must **not** read its result after a timeout.
-`token.TimedOut` is the gate that tells you whether the result is there to read.
+`token.TimedOut` is the gate that tells you whether the result is there to read. (`token.Completed` is the opposite
+flag; both are `false` until the await resolves.)
+
+The deadline takes a slot in the site's event queue. If the queue is full, the deadline cannot be armed: the site logs an
+error and the await becomes **unbounded** — it resumes only when the task completes.
 
 ```mermaid
 sequenceDiagram
@@ -263,7 +276,8 @@ ms. `Ref` accessors are the generated cross-site call surface — see [associati
 
 ```csharp
 [CrossReference<ISensor>("Sensors")]
-public sealed partial class PumpController : ModelBase
+public sealed partial class PumpController(IClock clock, IScheduler scheduler, ILogger logger)
+    : ModelBase(clock, scheduler, logger)
 {
     // Cross-references target an interface: [CrossReference<ISensor>] gives a generated ISensorRef accessor
     // with schedulers captured at construction (no per-call scheduler argument).
@@ -315,7 +329,9 @@ What to notice:
 | Wait on a cross-site reply | `var t = peer.Call(); yield return SimYield.Await(t); var r = t.GetAwaiter().GetResult();` |
 | Wait on a reply, but not forever | `var tok = new SimAwaitToken(); yield return SimYield.Await(t, us, tok); if (tok.TimedOut) …` |
 | Defer a process's *start* | `AddCoroutine(factory, delayUs)` — the body first runs at that delay |
+| Start a process at a mission instant | `AddCoroutineAtMission(factory, missionTimeUs)` |
 | End a process early | `yield break;` (or fall off the end) — it's disposed and its slot freed |
+| Cancel a process from outside | `Scheduler.RemoveEvent(id)` with the id `AddCoroutine` returned — works while it waits on a `Delay`/`Immediate`, not while it is parked on an `Await`; the iterator is not disposed, so its `finally` blocks don't run |
 | Do the same thing on a fixed grid | Use a [periodic event](#/guide/event-queue-and-scheduling) instead |
 
 Coroutines close the loop on the runtime model: a [clock](#/guide/time-and-clock) publishes time,

@@ -38,11 +38,13 @@ exhaustive schema, see the [assembly YAML reference](#/guide/assembly-yaml-refer
 
 ## Declaring a parameter
 
-`[Parameter]` goes on a **public, settable property or field** of a value type (a number, `bool`, `enum`, `char` or
-`string`). It takes:
+`[Parameter]` goes on a **settable property or field** of a value type (a number, `bool`, `enum`, `char` or
+`string`). Accessibility does not matter — the generated binder lives in the same class, so a `private` member works
+too. It takes:
 
 - **the default** (the positional argument) — the value applied when the assembly omits this parameter. This is why
-  parameters are **optional by default**.
+  parameters are **optional by default**. Leave it out (`[Parameter]`) and an absent key simply leaves the member at its
+  own initializer, and the parameter's `Default` is `null`.
 - **`Key`** (named) — the YAML key to read; defaults to the member's own name.
 - **`Required`** (named, default **`false`**) — when true, a missing key is a hard error instead of falling back to the
   default.
@@ -70,7 +72,8 @@ The matching assembly block, on this instance's node — supply only what differ
 
 > **Consequence for design.** `[Parameter]` binds a *scalar* into a typed member. It is for **leaf settings**, not
 > structure. Topology — which models exist, what contains what, what references what — lives in the tree and the
-> `Refs`/`Models`/`Deps` blocks, never in `Config`.
+> `Models`/`Refs`/`CRefs`/`Deps` blocks, never in `Config`. Every `Config` value is a YAML **scalar**, read as text and
+> parsed by the binder.
 
 ---
 
@@ -93,12 +96,24 @@ sim.Configure();                                 // parameters are now fixed for
 
 Each [`ParameterInfo`](#/api/type/SimulaSharp.Kernel.Parameters.ParameterInfo) carries a **`Path`** (the full dotted
 instance path plus member name — the *per-instance* unique key, e.g. `Plant.Plant1.Capacity`), a short **`Name`** (the
-member name, which repeats across instances), a **`ValueType`**, boxed `Read()`/`Write()`, and the declared `Default`.
-Two instances of the same model each get their **own** parameter with its own path and value — they are never shared.
+member name, which repeats across instances), a **`ValueType`** (the C# display name of the member type, e.g. `int`,
+`Demo.Mode`), boxed `Read()`/`Write()`, and the declared `Default` (`null` when the attribute gives none). The path is
+the simulator name followed by the instance names (`SimName.Model.Child.Member`, or `SimName.Service.Member` for a
+service); the site name is not part of it. Two instances of the same model each get their **own** parameter with its
+own path and value — they are never shared.
 
-> `SetParam` throws once the run is configured: parameters are a *build-time* surface. For values an operator changes
-> **while the sim runs**, use a [`[Knob]`](#/guide/observability) instead — and a member may be **both** a `[Parameter]`
-> and a `[Knob]` (tuned at build, controlled live).
+`SetParam(parameter, value)` writes through a plain unboxing cast, so `value` must be boxed as the parameter's
+**exact** type: `sim.SetParam(cap, 8)` works for an `int`, `sim.SetParam(cap, 8L)` throws `InvalidCastException`.
+
+> `SetParam` throws `InvalidOperationException` once the run is configured: parameters are a *build-time* surface. For
+> values an operator changes **while the sim runs**, use a [knob](#/guide/observability) instead — and a member may be
+> **both** a `[Parameter]` and a knob (tuned at build, controlled live):
+>
+> ```csharp
+> [Parameter(250)]
+> [NumberKnob<int>("Setpoint", Min = 0, Max = 1000)]
+> public partial int Setpoint { get; set; }
+> ```
 
 ---
 
@@ -106,14 +121,15 @@ Two instances of the same model each get their **own** parameter with its own pa
 
 For every model or service, the
 [`ParameterGenerator`](#/api/type/SimulaSharp.CodeGen.ParameterGenerator) emits two things on the partial class: an
-`__ApplyParameters` binder and an explicit `IParameterProvider.CollectParameters` that builds the `ParameterInfo`
-binders. (A model with **no** `[Parameter]` members still gets an *empty* pair — the simulator calls `__ApplyParameters`
-on every instance during assembly, so the method must always exist.) The binder for `Capacity` above:
+`internal __ApplyParameters(IReadOnlyDictionary<string, string?> config)` binder and an explicit
+`IParameterProvider.CollectParameters` that builds the `ParameterInfo` binders. (A model with **no** `[Parameter]`
+members still gets an *empty* pair — the simulator calls `__ApplyParameters` on every instance during assembly, so the
+method must always exist.) The binder for `Capacity` above:
 
 ```csharp
 {
     if (config.TryGetValue("Capacity", out var __value) && __value is not null)
-        Capacity = int.Parse(__value, System.Globalization.CultureInfo.InvariantCulture);
+        Capacity = global::System.Int32.Parse(__value, global::System.Globalization.CultureInfo.InvariantCulture);
     else
         Capacity = (int)(5);      // the attribute default, applied when the key is absent
 }
@@ -143,6 +159,14 @@ Parameters bind these value/constant types; anything else is silently skipped (n
 
 Members that are **get-only, `init`-only, `readonly`, or `const`** are skipped (they cannot be assigned).
 
+### Parameters and inheritance
+
+The generator only looks at members **declared on the class itself**. A derived class that declares **no**
+`[Parameter]` members inherits its base class's generated binder, so the base parameters work as usual. A derived class
+that declares **its own** `[Parameter]` members gets a new binder that **hides** the base one (the compiler reports
+warning `CS0108`): only the derived members are bound and listed by `GetParams()`, and the base members are not —
+not even their defaults. Until that changes, keep all of a type's parameters on one class in the hierarchy.
+
 ---
 
 ## Where it runs in the lifecycle
@@ -167,13 +191,14 @@ sequenceDiagram
 > **Consequence for design.** Treat parameters as **ready in `Configure()`, not in the constructor of your model.** Your
 > model's constructor runs before `__ApplyParameters`, so a parameter is still at its CLR default there. Do setup that
 > depends on a parameter in `Configure()`, which is guaranteed to run after binding and after any `SetParam` overrides.
+> `Configure()` runs on every service first, then on every model.
 
 ---
 
 ## Build-time validation
 
 The assembly generator cross-checks your `Config:` blocks against each type's real `[Parameter]` members. If a YAML key
-has **no matching `[Parameter]` member** (by key or member name), you get a **warning**,
+has **no matching `[Parameter]` member** (by key or member name, on the type or any base class), you get a **warning**,
 [`SIM016`](#/guide/assembly-yaml-reference): *"Config key '…' has no matching [Parameter] member on '…'."* It is a
 warning, not an error, so a stray key does not break the build — but it flags the typo that would otherwise silently do
 nothing.

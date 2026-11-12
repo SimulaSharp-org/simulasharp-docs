@@ -17,11 +17,12 @@ Keep those and the rest fall away.
 | Sharing mutable state across sites | data races, torn reads, heisenbugs | pass messages; each site owns its state |
 | Taking a lock | you don't need one — and it can deadlock a site | delete it; a site is single-threaded |
 | Assuming relative periodic re-arm | surprised by a catch-up burst after a stall | it's absolute — expect bursts; keep handlers cheap |
-| Scheduling in the past | `Add*` returns **-1**, work silently never runs | check the return; mission-time-in-the-past refuses |
+| Scheduling in the past / a full queue | `Add*` returns **-1**, work silently never runs | check the return; raise the site's `MaxEvents` |
 | Expecting reset | second run reuses stale state / throws | build a **new** simulator |
 | Over-exposing knobs | unreadable panel; brittle contract | expose only what an operator needs |
 | Arming events in the constructor | refs/config not yet wired — nulls, wrong values | arm in `Configure()` |
-| A handler or coroutine throws | it's caught, logged, and dropped — the site keeps running | look in the `SimulatorThreads.<site>` error log |
+| `RunFor` without `Start` | the clock advances but nothing fires | `Configure()`, then `Start()`, then `RunFor(…)` |
+| A handler or coroutine throws | it's caught, logged, and dropped — the site keeps running, but a throwing **periodic** is not re-armed | look in the `SimulatorThreads.<site>` error log (a service logs under its own name) |
 
 ---
 
@@ -68,8 +69,9 @@ private IEnumerator<SimYield> Process()
 
 > **The one legitimate blocking read.** Genuinely external I/O — a socket to real hardware, a HIL link — *does* need a
 > blocking read that lives **outside** sim time. That is what a [`LooselyCoupledServiceBase`](#/guide/services) is for:
-> it runs its reader on its **own** thread and marshals inbound work to a clock-ungated dispatcher
-> ([`LooselyCoupledSite`](#/guide/sites-and-dispatch)), never a SimSite, so the blocking read never freezes a subtree.
+> the service starts its own reader thread (in `OnRunStarted`, stopped in `OnRunStopped`) and `Post`s inbound work to
+> its clock-ungated dispatcher ([`LooselyCoupledSite`](#/guide/sites-and-dispatch)), never a SimSite, so the blocking
+> read never freezes a subtree.
 > Never put external/blocking I/O on a SimSite; put it there instead.
 
 ---
@@ -87,7 +89,7 @@ inbox — which you're no longer draining, because you're blocked.
 // BAD — blocks the site thread on a cross-site reply; can deadlock
 private void Step()
 {
-    double p = _Sensors[0].ReadPressure().Result;   // ← never do this on a site thread
+    double p = Sensors[0].ReadPressure().Result;    // ← never do this on a site thread
     Actuate(p);
 }
 ```
@@ -97,19 +99,22 @@ private void Step()
 
 ```csharp
 // GOOD (coroutine) — parks the process, not the thread
-Task<double> t = _Sensors[0].ReadPressure();
+Task<double> t = Sensors[0].ReadPressure();
 yield return SimYield.Await(t);
 Actuate(t.GetAwaiter().GetResult());        // complete by now, won't block
 
 // GOOD (plain event) — react on my own site, no blocking
-_Sensors[0].ReadPressure()
+Sensors[0].ReadPressure()
     .ContinueWith(d => Scheduler.Post(() => Actuate(d.Result)), TaskScheduler.Default);
 ```
 
+A C# `await` in model code is the same trap in disguise: it does not block, but the code after it resumes on a pool
+thread, not on your site, and then touches your state from the wrong thread. Use `SimYield.Await` instead.
+
 > **The one exception.** `InjectXxx(...).Wait()` from a **non-site** thread (a test driver, a host thread) is fine — you
 > aren't holding a site hostage. But note it only completes **while the target site is running**: a paused clock
-> [parks the site](#/guide/simsites-and-actors), so a `.Wait()` against a paused simulation waits forever. Run the clock
-> (or `RunFor`) around it.
+> [parks the site](#/guide/simsites-and-actors), so a `.Wait()` against a paused (or never started) simulation waits
+> forever. `Start()` the simulator (or `RunFor` after `Start`) around it.
 
 ---
 
@@ -129,17 +134,18 @@ closure passed to `Post`, or a raw model reference stashed in a field.
 otherSiteModel.Buffer.Add(sample);   // ← Buffer belongs to another site's thread
 ```
 
-**Fix:** pass a **message**, not a reference. Marshal the work onto the owning site (via a `Ref`, a service, or
-`Post`), so it runs on that site's thread and touches its own state:
+**Fix:** pass a **message**, not a reference. Marshal the work onto the owning site (via a `[CrossReference<T>]` Ref
+or a service), so it runs on that site's thread and touches its own state:
 
 ```csharp
 // GOOD — the append runs on the owner's thread
-await _Other[0].Append(sample);    // Ref accessor → owner's site (schedulers captured at construction)
-// or fire-and-forget:
-otherScheduler.Post(() => owner.Append(sample));
+// (on the target interface: [Triggerable] void Append(double sample);)
+Other[0].Append(sample);           // Ref accessor → Posted onto the owner's site, fire-and-forget
 ```
 
-Within a single subtree, sharing is fine — it's one thread. The rule is only about crossing **site** boundaries.
+Within a single site, sharing is fine — it's one thread. The rule is only about crossing **site** boundaries. The one
+sanctioned cross-site read is a `[VolatileAccess]` gauge: a get-only, atomically-readable property the owner writes
+through a volatile field and you only read.
 
 ---
 
@@ -177,13 +183,18 @@ you want (tick *counts* and *phase* stay exact — integrators and counters love
 
 ---
 
-## 6. Scheduling in the past
+## 6. Scheduling in the past, or into a full queue
 
 **Symptom:** work you scheduled **never runs**, silently.
 
-**Cause:** every `Add*` returns an **event id, or -1**. You get -1 when the queue is full, when a delay/period is
-negative/non-positive, or — for the mission-time forms — when the instant is **already in the past** (`AddEventAtMission`
-to a past mission time refuses with -1). Ignore the return and the work just vanishes.
+**Cause:** every `Add*` returns an **event id, or -1**. You get -1 when the site's queue is full, when a periodic's
+period is not positive, when a negative delay would land before sim time zero, or — for the mission-time forms
+(`AddEventAtMission`, `AddPeriodicEventAtMission`, `AddCoroutineAtMission`) — when the instant is **already in the
+past**. Ignore the return and the work just vanishes.
+
+The queue is fixed-size **per site**: every pending periodic, one-shot and coroutine on the site holds one slot, and a
+bounded `SimYield.Await(task, timeoutUs, token)` holds one more for its deadline. The default is **64**; raise it with
+`MaxEvents:` on the site in the [assembly](#/guide/the-assembly).
 
 ```csharp
 // BAD — silently drops the work if the queue is full or the time is past
@@ -194,8 +205,9 @@ int id = Scheduler.AddPeriodicEvent(Step, 10_000);
 if (id < 0) throw new InvalidOperationException("event queue full or invalid period");
 ```
 
-**Fix:** check the return of every `Add*` that matters, and handle -1 — don't ignore it. For mission-time scheduling,
-remember a past instant is refused by design; anchor to a future mission time or use a relative delay.
+**Fix:** check the return of every `Add*` that matters, and handle -1 — don't ignore it. If it is the queue, size
+`MaxEvents` for the site's real load. For mission-time scheduling, remember a past instant is refused by design; anchor
+to a future mission time or use a relative delay.
 
 ---
 
@@ -203,15 +215,15 @@ remember a past instant is refused by design; anchor to a future mission time or
 
 **Symptom:** a second run behaves oddly — stale state, an already-disposed error, a clock that won't restart from zero.
 
-**Cause:** there is [**no reset**](#/guide/time-and-clock). A simulator (and its clock) is **single-use**. `Start`/`Pause`
-resume the *same* run; nothing rewinds to zero.
+**Cause:** there is [**no reset**](#/guide/time-and-clock). A simulator (and its clock) is **single-use**. `Stop`
+freezes the run and `Start` resumes the *same* run; nothing rewinds to zero.
 
 **Fix:** to rerun from zero, **build a new simulator**. Fresh instances give clean state for free — which is the whole
 reason reset doesn't exist. In tests, construct a new `PlantSimulator()` per case.
 
 ```csharp
 // GOOD — each scenario is a fresh instance
-using (var sim = new PlantSimulator()) { sim.Configure(); sim.RunFor(1_000_000); }
+using (var sim = new PlantSimulator()) { sim.Configure(); sim.Start(); sim.RunFor(1_000_000); }
 using (var sim = new PlantSimulator()) { /* clean state, second scenario */ }
 ```
 
@@ -237,8 +249,12 @@ observability](#/guide/observability-design).
 **Cause:** the constructor runs **before** the simulator wires references and fills [`[Parameter]`](#/guide/configuration).
 A `[CrossReference<T>]`'s generated accessor is still an empty list and your `[Parameter]` properties aren't populated yet.
 
+The same goes for `[ServiceRef]` members (still null) and for a knob's generated `<Name>Changed` event (its binder is
+not built yet, so subscribing throws).
+
 **Fix:** do all setup in [`Configure()`](#/guide/models-and-containment) — the earliest point the model is whole
-(constructed, wired, configured). Arm events, subscribe to services, and precompute there, never in the constructor.
+(constructed, wired, configured). Arm events, subscribe to services and knob changes, and precompute there, never in
+the constructor.
 
 ```csharp
 // BAD
@@ -246,6 +262,25 @@ public Battery(...) : base(...) { Scheduler.AddPeriodicEvent(Step, 10_000); }  /
 
 // GOOD
 public override void Configure() { Scheduler.AddPeriodicEvent(Step, 10_000); }
+```
+
+---
+
+## 10. `RunFor` without `Start`
+
+**Symptom:** a scripted run or a test does nothing — no events fire, no log lines — yet `RunFor` waits the full time.
+
+**Cause:** `RunFor(durationUs)` only drives the **clock**: it starts it, waits for the duration, and pauses it. The site
+threads are started by the simulator's `Start()`. Without `Start()` the clock advances over sites that were never
+started, so nothing runs.
+
+**Fix:** follow the [lifecycle](#/guide/simulator-lifecycle) order — `Configure()`, then `Start()`, then `RunFor(…)`:
+
+```csharp
+using var sim = new PlantSimulator();
+sim.Configure();
+sim.Start();
+sim.RunFor(1_000_000);   // ~1 s of real time, then pause
 ```
 
 ---
@@ -258,7 +293,7 @@ Every pitfall above is a corollary of two facts about the runtime:
 flowchart TB
   R1["A SimSite is ONE thread<br/>shared by its whole subtree"] --> C1["never block it (1,2)<br/>never lock (4)<br/>arm work, don't wait (1,9)"]
   R2["State is owned by exactly<br/>one site's thread"] --> C2["never share mutable state across sites (3)<br/>pass messages instead"]
-  R3["Hard real time, single-use,<br/>absolute re-arm"] --> C3["no reset — new instance (7)<br/>expect catch-up bursts (5)<br/>check schedule returns (6)"]
+  R3["Hard real time, single-use,<br/>absolute re-arm"] --> C3["no reset — new instance (7)<br/>expect catch-up bursts (5)<br/>check schedule returns (6)<br/>Start before RunFor (10)"]
   classDef k fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
   class R1,R2,R3 k;
 ```

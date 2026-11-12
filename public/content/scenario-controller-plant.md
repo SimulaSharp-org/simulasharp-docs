@@ -30,7 +30,9 @@ graph TB
 
 An ordinary integrator (see [the integrator scenario](#/guide/scenario-integrator)) with two public
 members reachable across sites: `ReadLevel()` and `SetInflow(rate)`. These cross-referenced members
-live on the `IPlant` interface, and each is surfaced on the generated `IPlantRef`.
+live on the `IPlant` interface, and the [`RefGenerator`](#/api/type/SimulaSharp.CodeGen.RefGenerator)
+surfaces each on the generated `IPlantRef` class. A cross-reference must target an interface — a
+concrete class is a build error (`SIM018`).
 
 ```csharp
 using System;
@@ -82,8 +84,9 @@ public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
 
 The Controller declares `[CrossReference<IPlant>("Plant")]` (the target is the `IPlant` interface); the
 [`ReferenceGenerator`](#/api/type/SimulaSharp.CodeGen.ReferenceGenerator) adds a read-only
-`IReference<IPlantRef> Plant`. You call the plant **through** `Plant`; the schedulers are captured at
-construction, so calls take **no per-call scheduler argument** — the accessor decides direct-vs-marshalled itself.
+`IReference<IPlantRef> Plant`, filled from the assembly's `CRefs:` block. You call the plant
+**through** `Plant`; the schedulers are captured at construction, so calls take **no per-call
+scheduler argument** — the accessor decides direct-vs-marshalled itself.
 
 Because the plant is on another site the reply comes back as a `Task`. **Never block the site thread
 awaiting it.** The clean pattern is a [coroutine](#/guide/coroutines) that `Await`s the task: the
@@ -134,6 +137,12 @@ public partial class Controller(IClock c, IScheduler s, ILogger l) : ModelBase(c
 > continuation `Post`s the result back onto *your* site so `Act` runs on your thread. The coroutine
 > form just reads better. Either way, **you never `.Result`/`.Wait()` on a site thread.**
 
+> **A third tier: the gauge.** A get-only interface property marked `[VolatileAccess]` (e.g.
+> `[VolatileAccess] double Level { get; }`) becomes a plain synchronous getter on `IPlantRef`: one
+> lock-free read of the target, no `Task`, no marshal. It must be an atomically-readable type (a
+> word-size primitive, enum or reference), else `SIM021`. Likewise `[Triggerable]` must return
+> `void` (`SIM019`).
+
 ## The cross-site call
 
 The single `Plant[0].ReadLevel()` line resolves by comparing the captured caller/target schedulers. Here the caller
@@ -146,18 +155,21 @@ sequenceDiagram
   participant Ref as IPlantRef
   participant P as Plant (PlantSite / thread P)
   Ctl->>Ref: ReadLevel()
-  Ref->>Ref: ReferenceEquals(SchedulerC, Plant.Scheduler) → false
-  Ref->>P: Plant.Scheduler.InjectAsync(() => plant.ReadLevel())
+  Ref->>Ref: ReferenceEquals(callerSched, targetSched) → false
+  Ref->>P: targetSched.InjectAsync(() => target.ReadLevel())
   Note over Ctl: coroutine parks on the Task (site C keeps serving others)
   Note over P: runs on thread P during its next drain
-  P-->>Ctl: Task<double> completes → ReArm → resume on thread C
+  P-->>Ctl: Task<double> completes → Post(ReArm) to CtrlSite → resume on thread C
   Ctl->>Ctl: level = task.GetAwaiter().GetResult()
 ```
 
 ## The assembly
 
-Two sites, each with one root model. The Controller's `Refs:` block binds its `Plant` reference to
-the plant's dotted instance path, `Loop.Tank` (simulator name + model name).
+Two sites, each with one root model. The Controller's `CRefs:` block binds its `Plant`
+cross-reference to the plant's dotted instance path, `Loop.Tank` (simulator name + model name).
+`CRefs:` is for `[CrossReference<T>]`; `Refs:` is only for the intra-site `[Reference<T>]`, so
+listing `Plant` under `Refs:` is a build error (`SIM010`). An intra-site `[Reference<T>]` could not
+reach the plant anyway: its target is on another site (`SIM017`).
 
 ```yaml
 # loop.simassembly.yaml
@@ -173,7 +185,7 @@ Simulator:
         - Name: Ctl
           Type: Ctrl.Controller
           Config: { Target: 5.0 }
-          Refs:
+          CRefs:
             - Plant:
                 - Loop.Tank      # <-- dotted instance path of the referenced model
 ```
@@ -181,10 +193,12 @@ Simulator:
 Running is the usual lifecycle; the two sites run in parallel and the reference does the rest:
 
 ```csharp
+using Ctrl;
+
 using var sim = new LoopSimulator();
 sim.Configure();
 sim.Start();
-sim.Clock.RunFor(5_000_000);     // ~5 s: the level converges toward Target
+sim.RunFor(10_000_000);          // ~10 s: the level climbs at the 1 m/s limit, then settles on Target
 ```
 
 ## What to notice

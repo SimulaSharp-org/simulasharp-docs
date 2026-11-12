@@ -10,19 +10,23 @@ serialize work that could parallelize, or pay a cross-thread marshal on every ch
 
 ## The one rule everything follows
 
-> A **root model and its entire [containment subtree](#/guide/models-and-containment) share one SimSite** — one thread,
-> one [event queue](#/guide/event-queue-and-scheduling). Different root subtrees are **different sites**, running in
+> Every **root model listed under a `Site`, together with its whole
+> [containment subtree](#/guide/models-and-containment), shares that one SimSite** — one thread, one
+> [event queue](#/guide/event-queue-and-scheduling). Different `Site` blocks are **different threads**, running in
 > parallel.
 
-From that rule, two facts:
+A site may hold one root or several. Containment always keeps a subtree on its parent's site; roots that sit under the
+same `Site` share the thread too. From that rule, two facts:
 
-- **Within a subtree (same site):** models call each other with **direct method calls** — synchronous, lock-free, the
-  cost of a call. No message, no marshal, no `await`.
+- **Within a site:** models call each other with **direct method calls** — synchronous, lock-free, the cost of a call.
+  No message, no marshal, no `await`. Inside a subtree you reach children through the containment accessor; between
+  roots on the same site you use an intra-site [`[Reference<T>]`](#/guide/associations), which hands you the target
+  instances themselves.
 - **Across sites:** calls are **marshalled** — the caller drops a message in the target site's inbox, which runs it on
-  *its* thread. You reach across through a generated [`<Type>Ref`](#/guide/associations) (or a
-  [service](#/guide/services)), and the reply comes back as a `Task`.
+  *its* thread. You reach across through a [`[CrossReference<T>]`](#/guide/associations) and its generated `<I>Ref`
+  (or a [service](#/guide/services)), and a request's reply comes back as a `Task`.
 
-So **the boundaries of your subtrees are the boundaries of your parallelism** — and of your locking story (there is no
+So **the boundaries of your sites are the boundaries of your parallelism** — and of your locking story (there is no
 locking within a site, ever). Partitioning is not a performance afterthought; it is the primary design act.
 
 ```mermaid
@@ -44,7 +48,7 @@ flowchart TB
 
 ## The cost you are trading
 
-| | **Intra-site call** (same subtree) | **Cross-site call** (different site) |
+| | **Intra-site call** (same site) | **Cross-site call** (different site) |
 |---|---|---|
 | Mechanism | direct method call | message into target's inbox |
 | Runs on | caller's (== callee's) thread | target site's thread |
@@ -53,6 +57,10 @@ flowchart TB
 | Concurrency | none — serialized on one thread | two threads run in parallel |
 | Locking | never needed | never needed (inbox serializes) |
 | You must | nothing | not block the site — [coroutine `Await`](#/guide/coroutines) |
+
+The cross-site column is the default *request/response* tier of a `<I>Ref`. Two lighter tiers exist, chosen on the
+target interface: a `[Triggerable]` `void` method is fire-and-forget (a `Post`, no `Task`), and a `[VolatileAccess]`
+get-only property is a live gauge — a plain synchronous read of the target, with no marshal at all.
 
 Neither column ever needs a lock. The trade is **parallelism vs call cost**: a separate site buys you a core running in
 parallel, at the price of a marshal (and asynchrony) on every call that crosses the seam. Idle sites park (0% CPU), so
@@ -128,7 +136,7 @@ graph TD
 Sites:
   - Name: Main
     Models:
-      - { Name: Plant1, Type: Demo.Plant, Models: [ Units: [ … ] ] }
+      - { Name: Plant1, Type: Demo.Plant, Models: [ { Units: [ … ] } ] }
 ```
 
 ### B. Parallel subsystems — a few sites
@@ -220,10 +228,13 @@ A [`[CrossReference<T>]`](#/guide/associations) resolves *for free* when the tar
 marshal when it doesn't — but the source line is identical either way, so it's easy to miss. If profiling shows a site
 starved on cross-site round-trips, the fix is usually one of:
 
-- **Move the two models into the same subtree** so the reference resolves same-site (direct again), or
+- **Move the two models onto the same site** so the reference resolves same-site (direct again) — and, once they are
+  guaranteed to stay there, make it an intra-site `[Reference<T>]` so the call is a plain synchronous one, or
 - **Batch** — send one coarse message instead of many fine-grained ones, or replace a request/response with a
-  fire-and-forget [`[ServiceEvent]`](#/guide/services) push, or
-- **Cache** — subscribe to a service event and keep a local copy, instead of requesting the value every step.
+  fire-and-forget push: a `[Triggerable]` method on the target interface, or a [`[ServiceEvent]`](#/guide/services), or
+- **Cache** — subscribe to a service event and keep a local copy, instead of requesting the value every step, or
+- **Gauge** — for a live scalar the peer owns, mark a get-only property `[VolatileAccess]` on the target interface;
+  reading it through the Ref is a single lock-free read, with no marshal.
 
 > **Consequence for design.** Correctness never depends on the partition — a `Ref` does the right thing wherever the
 > target lives. **Performance does.** The topology exists to make the *frequent* calls cheap (same-site, direct) and the
@@ -232,29 +243,37 @@ starved on cross-site round-trips, the fix is usually one of:
 
 ## Tying it to the assembly
 
-The map lives entirely in `Sites:`. Each `Site` is a thread; each top-level model under it is a root that owns that
-site with its whole subtree. To **re-partition**, you move a model between `Site` blocks in the YAML — no C# changes,
-because a model never names its own site (it's handed a `Scheduler`). [Services](#/guide/services) get their own site
-implicitly and are listed under `Services:`, not under any `Site`.
+The map lives entirely in `Sites:`. Each `Site` is a thread; each top-level model under it is a root that runs on that
+site with its whole subtree. To **re-partition**, you move a root between `Site` blocks in the YAML — no C# changes,
+because a model never names its own site (it's handed a `Scheduler`). The one exception is an intra-site
+`[Reference<T>]` (YAML `Refs:`): if a move puts its two ends on different sites, the build fails with **SIM017**, and
+you switch it to a `[CrossReference<T>]` (YAML `CRefs:`, interface target). [Services](#/guide/services) get their own
+site implicitly and are listed under `Services:`, not under any `Site`.
+
+Each site also has a fixed-size event queue: `MaxEvents` (default **64**) is the most pending entries — periodics,
+one-shots, coroutines — it can hold at once. A site that hosts many roots may need more.
 
 ```yaml
-Sites:
-  - Name: A          # thread A
-    Models: [ … ]    # these roots + subtrees share thread A
-  - Name: B          # thread B — parallel with A
-    Models: [ … ]
+Simulator:
+  Name: Demo
+  Sites:
+    - Name: A            # thread A
+      MaxEvents: 128     # optional; default 64
+      Models: [ … ]      # these roots + subtrees share thread A
+    - Name: B            # thread B — parallel with A
+      Models: [ … ]
 ```
 
 ## What this means for you
 
 | You want to… | Do this |
 |---|---|
-| Keep two models synchronous and lock-free | put them in the **same** containment subtree (same `Site`) |
+| Keep two models synchronous and lock-free | put them on the **same** `Site` (one subtree, or a `[Reference<T>]` between roots) |
 | Run two subsystems in parallel | give each its **own** root under a separate `Site` |
 | Share a capability across many subsystems | make it a [service](#/guide/services) (own site, listed under `Services:`) |
 | Isolate a heavy/stalling subsystem | split it onto its **own** site |
-| Reduce cross-site chatter | move the pair same-site, batch, or switch to event push + local cache |
-| Re-partition | move models between `Site` blocks in the YAML — no C# change |
+| Reduce cross-site chatter | move the pair same-site, batch, switch to event push + local cache, or read a `[VolatileAccess]` gauge |
+| Re-partition | move roots between `Site` blocks in the YAML — no C# change, unless an intra-site `[Reference<T>]` now crosses (SIM017) |
 
 Next: build one model well — **[modeling a subsystem](#/guide/modeling-a-subsystem)** — then wire the talking —
 **[interaction patterns](#/guide/interaction-patterns)**.

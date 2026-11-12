@@ -5,6 +5,16 @@ A finished simulator is a class library — your models, your services, the gene
 self-contained `.nupkg`, and it **loads** the pack into a collectible, isolated assembly context. The eventual host is
 the MMI; the loader is [`SimulatorPackage`](#/api/type/SimulaSharp.Hosting.SimulatorPackage) in `SimulaSharp.Hosting`.
 
+The two sides use different packages. The simulator project references `SimulaSharp` (the meta-package: Kernel +
+CodeGen). The host references `SimulaSharp.Hosting`, which is **not** part of the meta-package and brings
+`SimulaSharp.Kernel` with it:
+
+```xml
+<ItemGroup>
+  <PackageReference Include="SimulaSharp.Hosting" Version="0.5.3" />
+</ItemGroup>
+```
+
 ```mermaid
 flowchart LR
   BUILD["your class library<br/>models + generated PlantSimulator"] -->|"dotnet pack"| PKG["Plant.nupkg<br/>self-contained"]
@@ -29,13 +39,18 @@ dotnet pack -c Release
 
 `dotnet pack` already puts your project's assembly in `lib/<tfm>/`, but **not** its runtime `.deps.json` or its private
 dependency DLLs — which the host loader needs to resolve dependencies. The CodeGen package ships an MSBuild pack target
-(`_SimulaSharpAddPackPayload`) that adds them, so the `.nupkg` is **self-contained and restore-free to load**:
+(`_SimulaSharpAddPackPayload`, under `buildTransitive/`, so it reaches you through the `SimulaSharp` meta-package) that
+adds them, so the `.nupkg` is **self-contained and restore-free to load**:
 
-- every private dependency DLL beside the build output, **excluding**
+- every `*.dll` in the build output folder, **excluding**
 - the main assembly itself (already packed), and
-- the shared **`SimulaSharp.*`** framework assemblies (loaded from the host, never from the pack), and
-- framework assemblies;
+- the shared **`SimulaSharp.*`** framework assemblies (loaded from the host, never from the pack);
 - plus the project's `<AssemblyName>.deps.json`.
+
+Framework assemblies are never copied to a library's build output, so they never reach the pack. Only the top level of
+the output folder is collected (no subfolders). The loader finds the main assembly as `<package id>.dll`, so keep the
+`PackageId` equal to the `AssemblyName` (the default), and pack a **single** target framework: the loader flattens every
+`lib/` file into one folder.
 
 ```mermaid
 flowchart TB
@@ -57,12 +72,15 @@ flowchart TB
 
 ## Loading
 
-`new SimulatorPackage(path)` loads a pack. `path` may be a **`.nupkg`** (its `lib/<tfm>/` payload is extracted), a
-**build-output directory**, or a single **`.dll`**. Whatever the form, the loader:
+`new SimulatorPackage(path)` loads a pack. `path` may be a **`.nupkg`** (its `lib/<tfm>/` payload is extracted; a
+`.simpack` with the same zip layout is accepted too), a **build-output directory** (it must hold exactly one
+`*.deps.json`, which names the main assembly), or a single **`.dll`** (its whole folder is copied). Whatever the form,
+the loader:
 
-1. **Shadow-copies** the payload to a fresh temp folder — so the original build can be rebuilt while a copy is loaded.
-2. Loads the main assembly into a **collectible `AssemblyLoadContext`** (`PackLoadContext`) backed by an
-   `AssemblyDependencyResolver` driven by the pack's `.deps.json`.
+1. **Shadow-copies** the payload to a fresh temp folder (`package.ShadowDirectory`) — so the original build can be
+   rebuilt while a copy is loaded.
+2. Loads the main assembly into a **collectible `AssemblyLoadContext`** (`PackLoadContext`, named `SimulaSharpPack`)
+   backed by an `AssemblyDependencyResolver` driven by the pack's `.deps.json` (it resolves native libraries too).
 3. **Shares every `SimulaSharp.*` assembly from the host's Default context** — the ALC's `Load` returns `null` for any
    name starting with `SimulaSharp`, deferring to Default; everything else resolves from the pack's own folder.
 4. **Discovers simulators by reflection scan**: public, non-abstract, non-interface subclasses of
@@ -86,19 +104,23 @@ The discovered names are on `package.Simulators`; you create an instance by name
 using var package = new SimulatorPackage("out/Plant.nupkg");
 foreach (var name in package.Simulators) Console.WriteLine(name);   // "Plant"
 
-ISimulator sim = package.Create("Plant");    // a fresh PlantSimulator, typed as ISimulator
-// drive it: construct → Configure → Start → Stop → Dispose  (see the lifecycle page)
+ISimulator sim = package.Create("Plant");    // a fresh PlantSimulator, typed as ISimulator (already assembled)
+// drive it: GetParams/SetParam → Configure → Start / RunFor / Stop → Dispose  (see the lifecycle page)
 ```
 
-`Create` news up the type via its parameterless ctor and hands it back as `ISimulator`. An unknown name throws
-`ArgumentException`; creating from a disposed pack throws `ObjectDisposedException`.
+`Create` news up the type via its parameterless ctor and hands it back as `ISimulator`. The constructor assembles the
+whole topology, so the host can read and override parameters before `Configure()`. The name lookup is
+case-insensitive. An unknown name throws `ArgumentException` (the message lists the names the pack has); creating from
+a disposed pack throws `ObjectDisposedException`.
 
 ---
 
 ## Unload and reload
 
 Because the ALC is **collectible**, the whole pack can be unloaded. `package.Dispose()` unloads the context, drops the
-`Type` references that would pin it, nudges the GC, and removes the shadow copy. Reloading is not an in-place swap — it
+`Type` references that would pin it, then runs the GC and tries to delete the shadow copy, up to ten times. On Windows
+the shadow DLL stays locked until the context is really gone, so if a live `ISimulator` (or any other reference) still
+pins it, the shadow folder is left behind. Reloading is not an in-place swap — it
 is single-use all the way down, mirroring the simulator's own [no-reset lifecycle](#/guide/simulator-lifecycle):
 
 1. **Dispose the `ISimulator`** you created (tears down its sites, services, models, clock).
@@ -127,10 +149,14 @@ Everything the host touches must live on the **shared** `ISimulator` / `Simulato
 `<Name>Simulator`. The host only ever sees `ISimulator`; the concrete type is discovered by reflection and immediately
 upcast. Any capability you bolt onto the generated subclass is invisible across the boundary.
 
+The same shared identity is why the framework's `AssemblyVersion` is pinned at `0.5.0.0` for every 0.5.x release
+(the package version moves, the binding identity does not): a pack built against one 0.5.x patch binds to the
+`SimulaSharp.Kernel` of a host running another.
+
 ```mermaid
 flowchart LR
   subgraph host["host Default context"]
-    ISIM["ISimulator / SimulatorBase<br/>Knobs · Plottables · lifecycle"]
+    ISIM["ISimulator / SimulatorBase<br/>Knobs · Plottables · Params · lifecycle"]
   end
   subgraph pack["pack ALC"]
     GEN["PlantSimulator : SimulatorBase"]
