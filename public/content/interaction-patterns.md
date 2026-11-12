@@ -6,8 +6,8 @@ coupling, cost, and how you write the call.
 
 | # | Pattern | Coupling | Thread | Cost | Result | Reach for it when… |
 |---|---|---|---|---|---|---|
-| 1 | **Intra-subtree direct call** | tight (owned/same subtree) | caller's own | a method call | immediate return | the callee is in your [containment subtree](#/guide/models-and-containment) |
-| 2 | **Cross-site `[CrossReference<T>]`** | point-to-point link | target's | a marshal | a `Task` | a specific peer on another site |
+| 1 | **Intra-site direct call** | tight (same site) | caller's own | a method call | immediate return | the callee is in your [containment subtree](#/guide/models-and-containment), or a `[Reference<T>]` on your site |
+| 2 | **Cross-site `[CrossReference<T>]`** | point-to-point link | target's | a marshal | a `Task` (or fire-and-forget, or a gauge read) | a specific peer on another site |
 | 3 | **Service** ([`[ServiceEvent]`](#/guide/services)/[`[ServiceRequest]`](#/guide/services)) | many-to-one, decoupled | service's | a marshal | fire-and-forget or `Task` | a shared capability many models use |
 
 ## Choosing among the three
@@ -15,15 +15,15 @@ coupling, cost, and how you write the call.
 ```mermaid
 flowchart TD
   START(["Model A needs to reach B"]) --> Q1
-  Q1{"Is B in A's own<br/>containment subtree<br/>(same site)?"}
+  Q1{"Is B on A's own site<br/>(own subtree, or an<br/>intra-site Reference)?"}
   Q1 -->|"yes"| DIRECT["1 · DIRECT CALL<br/>b.Method(args) — synchronous, lock-free"]
   Q1 -->|"no"| Q2
   Q2{"Is it a specific known<br/>peer, point-to-point?"}
-  Q2 -->|"yes"| REF["2 · REFERENCE<br/>await _B[i].Method(args)"]
+  Q2 -->|"yes"| REF["2 · CROSS-REFERENCE<br/>SimYield.Await(B[i].Method(args))"]
   Q2 -->|"no — a shared capability<br/>used by many models"| Q3
   Q3{"Broadcast 'something<br/>changed' or ask for<br/>an answer?"}
   Q3 -->|"broadcast, no reply"| EVT["3a · SERVICE EVENT<br/>RegisterCallback_X + Trigger_X"]
-  Q3 -->|"need an answer"| RQ["3b · SERVICE REQUEST<br/>await service.X(arg)"]
+  Q3 -->|"need an answer"| RQ["3b · SERVICE REQUEST<br/>SimYield.Await(service.X(arg))"]
   classDef d fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
   classDef r fill:#dcfce7,stroke:#16a34a,color:#14532d;
   classDef s fill:#fef9c3,stroke:#ca8a04,color:#713f12;
@@ -38,9 +38,9 @@ must marshal. That, in turn, is set by your [topology](#/guide/choosing-a-topolo
 
 ---
 
-## 1. Intra-subtree direct call
+## 1. Intra-site direct call
 
-The cheapest interaction — and the reward for putting tightly-coupled models in one subtree. Same site, one thread, so
+The cheapest interaction — and the reward for putting tightly-coupled models on one site. Same site, one thread, so
 it's a plain synchronous method call. No marshal, no `Task`, no `await`, no lock.
 
 ```csharp
@@ -61,6 +61,19 @@ sequenceDiagram
   participant U as Unit (Site A)
   P->>U: u.Recompute()
   U-->>P: returns immediately (same thread)
+```
+
+The callee does not have to be your child. Another root on the **same** site is reached through an intra-site
+[`[Reference<T>("Name")]`](#/guide/associations): the generated accessor is an `IReadOnlyList<T>` of the target
+instances themselves (YAML `Refs:`), so the call is just as direct. The generator checks that every target really is
+on your site (SIM017 if not).
+
+```csharp
+[Reference<Battery>("Batteries")]        // targets share this model's site
+public sealed partial class PowerManager(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
+{
+    private double TotalSoC() => Batteries.Sum(b => b.SoC);   // direct, synchronous
+}
 ```
 
 Use it whenever you can. If your hottest call path *isn't* a direct call, reconsider the [topology](#/guide/choosing-a-topology).
@@ -106,8 +119,32 @@ sequenceDiagram
   S-->>C: Task<double> completes → coroutine resumes on A
 ```
 
-The same source line is direct or marshalled depending only on where the target resolves — you write it once. Full
-mechanics: [associations](#/guide/associations).
+The same source line is direct or marshalled depending only on where the target resolves — you write it once. Wire the
+targets in the YAML under `CRefs:`.
+
+That is the default **request/response** tier: every method and property of the interface becomes a `Task`-returning
+call on the Ref (a property `P` becomes `GetP()` / `SetP(value)`). Two lighter tiers are chosen by attributes on the
+**interface**:
+
+| Interface member | On the Ref | Same-site | Cross-site |
+|---|---|---|---|
+| plain method / property (default) | `Task` / `Task<T>` | runs inline, completed `Task` | `InjectAsync` / `InjectVoidAsync` |
+| `[Triggerable]` `void` method | `void` — fire-and-forget | runs inline | `Post`, returns at once |
+| `[VolatileAccess]` get-only property | plain synchronous getter | reads the target directly | reads the target directly — no marshal |
+
+```csharp
+public interface ISensor
+{
+    double ReadPressure();                      // request/response → Task<double> ReadPressure()
+    [Triggerable] void Calibrate(double zero);  // fire-and-forget  → void Calibrate(double)
+    [VolatileAccess] double Pressure { get; }   // live gauge       → double Pressure { get; }
+}
+```
+
+A `[Triggerable]` method must return `void` (SIM019). A `[VolatileAccess]` property must be get-only and of a type that
+reads atomically — a word-size primitive, an enum or a reference (SIM021); the target should back it with a volatile
+field, which a `partial` knob or plottable property already is. A gauge read is not ordered against `[Triggerable]`
+calls — it bypasses the dispatcher. Full mechanics: [associations](#/guide/associations).
 
 ---
 
@@ -118,7 +155,10 @@ When *many* models depend on one capability — a bus, an environment, a resourc
 
 ### 3a. Event — broadcast, fire-and-forget
 
-The service publishes; subscribers react on their own site. No reply. Best for "something changed" fan-out.
+The service publishes; subscribers react on their own site. No reply. Best for "something changed" fan-out. The service
+declares `[ServiceEvent("EclipseChanged", typeof(bool))]` and calls the generated `Trigger_EclipseChanged(value)`; a
+model holds the service in a `[ServiceRef]` member (bound by the YAML `Deps:` block) and subscribes through the
+generated `RegisterCallback_EclipseChanged(dispatcher, callback)`.
 
 ```csharp
 // in the model's Configure():
@@ -143,7 +183,8 @@ per tick.
 ### 3b. Request — ask for an answer
 
 The model calls; the handler runs on the **service's** thread and returns a `Task`/`Task<T>`. Best for "give me a value"
-or "reserve this."
+or "reserve this." The service writes the handler `[ServiceRequest] int Handle_Allocate(int want)`, and the generator
+emits the public `Task<int> Allocate(int want)` caller. A handler takes at most one parameter (SIM022).
 
 ```csharp
 private IEnumerator<SimYield> AcquireLoop()
@@ -159,7 +200,7 @@ private IEnumerator<SimYield> AcquireLoop()
 sequenceDiagram
   participant M as Model (site A)
   participant Svc as Service site (thread S)
-  M->>Svc: await Pool.Allocate(8)  (InjectAsync)
+  M->>Svc: Pool.Allocate(8)  (InjectAsync)
   Note over Svc: Handle_Allocate(8) runs on service thread
   Svc-->>M: Task<int> completes → resume on A
 ```
@@ -184,10 +225,23 @@ The site keeps spinning; when the task completes, the coroutine resumes on its o
 ready. This reads top-to-bottom, like a story.
 
 ```csharp
-Task<double> t = _Sensors[0].ReadPressure();
+Task<double> t = Sensors[0].ReadPressure();
 yield return SimYield.Await(t);                 // site stays live; only THIS process waits
 double p = t.GetAwaiter().GetResult();          // safe — complete by now, won't block
 ```
+
+If the peer may be slow or gone, bound the wait. Pass a fresh `SimAwaitToken`; the coroutine resumes when the task
+completes **or** the sim-time timeout passes, whichever is first, and the token tells you which:
+
+```csharp
+var tok = new SimAwaitToken();
+Task<double> t = Sensors[0].ReadPressure();
+yield return SimYield.Await(t, timeoutUs: 5_000, tok);
+if (tok.TimedOut) { /* gave up — the task is still running; don't read it */ }
+else Actuate(t.GetAwaiter().GetResult());
+```
+
+A bounded await uses one extra slot in your site's event queue for the deadline.
 
 ### Option B — `ContinueWith` + `Post`
 
@@ -195,7 +249,7 @@ From a non-coroutine event where you can't yield, don't await inline — attach 
 back onto your own site**, so the reaction runs on your thread with no blocking:
 
 ```csharp
-Task<double> t = _Sensors[0].ReadPressure();
+Task<double> t = Sensors[0].ReadPressure();
 t.ContinueWith(done =>
     Scheduler.Post(() => Actuate(done.Result)),  // hop back onto MY site to touch state
     TaskScheduler.Default);
@@ -213,22 +267,27 @@ flowchart TD
   BAD["NEVER: task.Result / task.Wait()<br/>on a site thread — freezes the whole site"]:::bad
 ```
 
-Both keep the thread free; both make the reaction run on *your* site so it can touch your state lock-free. The blocking
-`task.Result` form is the classic trap — see [pitfalls](#/guide/pitfalls).
+Both keep the thread free; both make the reaction run on *your* site so it can touch your state lock-free. (In option B,
+`done.Result` is safe because the task is complete; if the request faulted it rethrows, and your site logs and drops
+that posted work.) The blocking `task.Result` form is the classic trap — see [pitfalls](#/guide/pitfalls). So is a C#
+`await` in model code: its continuation resumes on a pool thread, not on your site.
 
 ## What this means for you
 
 | You want to… | Use |
 |---|---|
 | Call a model in your own subtree | direct method call — synchronous, lock-free |
-| Call a specific peer on another site | a [`[CrossReference<T>]`](#/guide/associations) accessor: `_B[i].M(…)` |
+| Call another root on your own site | an intra-site [`[Reference<T>]`](#/guide/associations) — still a direct call |
+| Call a specific peer on another site | a [`[CrossReference<T>]`](#/guide/associations) accessor: `B[i].M(…)` |
+| Tell a peer something, no reply | a `[Triggerable]` `void` method on its interface |
+| Read a peer's live scalar cheaply | a `[VolatileAccess]` get-only property on its interface |
 | Broadcast "something changed" to many models | a [`[ServiceEvent]`](#/guide/services) + local cache |
-| Ask a shared capability for an answer | a [`[ServiceRequest]`](#/guide/services): `await svc.X(arg)` |
-| Read a cross-thread reply from a process | `yield return SimYield.Await(task)` in a [coroutine](#/guide/coroutines) |
+| Ask a shared capability for an answer | a [`[ServiceRequest]`](#/guide/services): `svc.X(arg)` → `Task` |
+| Read a cross-thread reply from a process | `yield return SimYield.Await(task)` in a [coroutine](#/guide/coroutines) (optionally with a timeout) |
 | React to a reply from a plain event | `task.ContinueWith(_ => Scheduler.Post(() => …))` |
 | Wait on a reply from *on* a site thread | **never** `.Result`/`.Wait()` — see [pitfalls](#/guide/pitfalls) |
 
-For an ownerless "this just happened" broadcast that *any* model can raise — decoupled from any service — see
+For an ownerless "this just happened" broadcast that *any* model or service can raise — decoupled from any service — see
 **[global events](#/guide/events)**.
 
 Next: deciding whether a thing should be a model or a service at all — **[model vs service](#/guide/model-vs-service)**.
