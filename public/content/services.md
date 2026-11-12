@@ -44,8 +44,10 @@ model (owned via `Container<T>`), a `[Reference<T>]` when the thing is really pa
 
 ## `ServiceBase`
 
-The base takes the clock, a logger, and a **name** (diagnostic, used for its SimSite), and optionally the site's
-queue capacity. It creates the site for you:
+The base constructor is `ServiceBase(IClock timeKeeper, ILogger logger, string name, int maxEvents = 64)`: the clock,
+a logger, a **name** (diagnostic, used for its SimSite), and optionally the capacity of the site's event queue. It
+creates the site for you. The generated simulator constructs every service as `new T(Clock, logger)`, so your service
+needs a **public `(IClock, ILogger)` constructor** (SIM006 otherwise) and passes its own name and capacity to the base:
 
 ```csharp
 using SimulaSharp.Kernel.Attributes;
@@ -67,16 +69,24 @@ public partial class DemoService : ServiceBase
 | `Logger` | The service's component-scoped logger. |
 | `Site` | The service's **own** site, as an [`IDispatcherSite`](#/api/type/SimulaSharp.Kernel.Services.IDispatcherSite) — its **marshalling** surface. Every call into the service is marshalled onto it. It is what the generated `[ServiceRequest]`/`[ServiceEvent]` plumbing targets. |
 | `Scheduler` | *(protected)* the **same** site seen as an [`IScheduler`](#/api/type/SimulaSharp.Kernel.Services.IScheduler) — its sim-time facet. Arm long-running events here in `Configure()`. Only the service author sees it; callers only ever get `Site`. |
-| `Configure()` / `Dispose()` | Same hooks as a model — setup after wiring, deinit after the site stops. |
+| `Configure()` / `Dispose()` | Same hooks as a model — setup after wiring, deinit after the site stops. The simulator runs every service's `Configure()` **before** any model's, and every service's `Dispose()` before the models'. |
 
 > **Why two facets of one site?** `Site` (an `IDispatcherSite`) exposes only *marshalling* — `Post`/`Inject*` — and
 > the lifecycle the simulator drives; `Scheduler` (an `IScheduler`) adds the sim-time queue and is **protected**, so a
 > caller holding a service can marshal work to it but can neither schedule on nor start/stop its site. This is the same
 > capability-segregation split described in [sites & dispatch](#/guide/sites-and-dispatch).
 
-Like a model that uses codegen, a service **must be `partial`** — the
-[`ServiceGenerator`](#/api/type/SimulaSharp.CodeGen.ServiceGenerator) weaves the interaction plumbing into it. The
-service never starts, stops or disposes its own site; the simulator owns every site's lifecycle.
+Like every model, a service **must be `partial`** — a non-partial service is a build error (SIM029). The
+[`ServiceGenerator`](#/api/type/SimulaSharp.CodeGen.ServiceGenerator) weaves the interaction plumbing into it, and the
+parameter generator gives it the `__ApplyParameters` seam the simulator calls on every instance. The service never
+starts, stops or disposes its own site; the simulator owns every site's lifecycle.
+
+A service is a full participant in the rest of the framework too. It can carry
+[`[Parameter]`](#/guide/configuration) members (set from a `Config:` block on its `Services:` entry, or with
+`SetParam(...)` before `Configure()`), [`[Knob]` and `[Plottable]`](#/guide/observability) members (discovered under the
+path `<Simulator>.<ServiceName>`), and it can take part in [global events](#/guide/events). Work posted to a
+`ServiceBase` site that throws is caught, logged at **Error** on the **service's own** logger, and dropped — the same
+per-site error channel a model's site has.
 
 A service talks to the world through three class-level, generator-owned attributes:
 
@@ -175,7 +185,12 @@ public Task<int> Allocate(int want) => Site.InjectAsync(() => Handle_Allocate(wa
 ```
 
 - The handler may take **at most one argument** (a single optional context) and may **return a value** — a handler with
-  more than one parameter is a build error ([SIM022](#/guide/assembly-yaml-reference)).
+  more than one parameter is a build error ([SIM022](#/guide/assembly-yaml-reference)) and gets no caller.
+- `[ServiceRequest("Name")]` sets the request name explicitly, so the handler can have any method name:
+  `[ServiceRequest("Reset")] protected void DoReset()` emits `public Task Reset()`. Without a name and without the
+  `Handle_` prefix, the caller takes the method's own name.
+- The handler must be declared on the service class itself. A generic handler, or one with a `ref`/`out`/`in`
+  parameter, is skipped silently — no caller is emitted and no diagnostic is raised.
 - A `void` handler → a `Task`-returning caller (via `InjectVoidAsync`); a value handler → a `Task<T>`-returning caller
   (via `InjectAsync`).
 - The caller marshals onto **`Site`** — the *service's* own site (via the common `IDispatcher` facet) — so the handler
@@ -202,10 +217,11 @@ sequenceDiagram
 
 ## `[ServiceRef]` — how a model gets a handle
 
-A model does not `new` a service or fish it out of a registry. It declares a **settable** member marked
-[`[ServiceRef]`](#/api/type/SimulaSharp.Kernel.Attributes.ServiceRefAttribute), and the
-[assembly](#/guide/the-assembly)'s `Deps` block binds it **by service name**. The generated simulator sets the member
-to the named service instance during assembly, before `Configure()`.
+A model does not `new` a service or fish it out of a registry. It declares a **public, settable** field or property
+marked [`[ServiceRef]`](#/api/type/SimulaSharp.Kernel.Attributes.ServiceRefAttribute), and the
+[assembly](#/guide/the-assembly)'s `Deps` block binds it **by service name** (each entry is `{ <member>: <service> }`).
+The generated simulator sets the member to the named service instance during assembly — after every model and service
+is constructed, before `Configure()`.
 
 ```csharp
 public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
@@ -231,6 +247,9 @@ public partial class Plant(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, 
 - **Key point.** The member is typed as the concrete service (`DemoService`), so once wired, the model calls the
   generated interaction surface directly: `RegisterCallback_*` to subscribe to events, and the `X(..)` callers to make
   requests. The `[ServiceRef]` must be settable because the simulator assigns it during wiring.
+- The generator checks every `Deps` entry at build time: the member must exist and carry `[ServiceRef]` (SIM013), the
+  named service must be declared under `Services:` (SIM014), and the service must be assignable to the member's type
+  (SIM015). The member may also be typed as an interface or base class the service implements.
 
 ### Services can depend on services — even cyclically
 
@@ -253,6 +272,21 @@ Services:
     Type: Demo.SvcB
     Deps:
       - Peer: A        # SvcB.[ServiceRef] Peer ← service A  (the cycle)
+```
+
+### Services and global events
+
+A service can also subscribe to and trigger a [global event](#/guide/events), exactly like a model: mark a `void`
+method `[EventHandler]` or a producer member `[EventReference]`, then bind them with `Subscriptions:` / `Triggers:`
+blocks on the service's own `Services:` entry. A service subscriber's handler is posted onto its public `Site` (a model
+uses its `Scheduler`), so it still runs on the service thread.
+
+```yaml
+Services:
+  - Name: Tracker
+    Type: Demo.DemoService
+    Subscriptions:
+      - OnBusFault: BusFault   # [EventHandler] void OnBusFault(double) ← event BusFault
 ```
 
 ## The whole picture
@@ -283,6 +317,7 @@ Two directions, two mechanisms, both always cross-thread:
 | Service → models | `[ServiceEvent]` | `Trigger_X` (protected) · `RegisterCallback_X` (public) | each **subscriber's** site | no (fire-and-forget) |
 | Models → service | `[ServiceRequest]` | `X(..)` caller (public) over `Handle_X` | the **service's** site | optional (`Task`/`Task<T>`) |
 | Model **or service** gets handle | `[ServiceRef]` | assembly binds the member by name (service→service allowed, incl. cycles) | — | — |
+| Ownerless broadcast (models **and** services) | `[EventHandler]` / `[EventReference]` | see [global events](#/guide/events) | each **subscriber's** site | no (fire-and-forget) |
 
 > **Consequence for design.** A service centralizes shared state on one thread, so it is a natural serialization point
 > — and a natural **bottleneck** if every model hammers it synchronously. Prefer fire-and-forget events for broadcast
@@ -312,7 +347,7 @@ flowchart TB
   subgraph svc ["LooselyCoupledService"]
     D["Dispatcher (site thread)<br/>owns state · inline outbound send<br/>sleeps until Post"]
     R["Reader thread (you own it)<br/>blocking read → Site.Post(inbound)"]
-    C["OnRunStarted / OnRunStopped<br/>(inline on the clock thread)"]
+    C["OnRunStarted / OnRunStopped<br/>(inline, on the thread that starts/pauses the clock)"]
   end
   M["models"] -->|"Ch*Tx request (marshalled)"| D
   R -->|"Post(inbound)"| D
@@ -329,17 +364,21 @@ flowchart TB
 - **Reader thread** — you spin it (a blocking socket read) and hand inbound work back to the dispatcher via
   `Site.Post(...)`. Tie it to the run with a `CancellationTokenSource`: (re)spawn in `OnRunStarted`, cancel + join in
   `OnRunStopped`.
-- **Control plane** — `OnRunStarted`/`OnRunStopped` fire **inline on the clock thread** (not the dispatcher), so a
-  halt/unhalt over an independent control link is *immediate*, never queued behind data work.
+- **Control plane** — `OnRunStarted`/`OnRunStopped` are handlers on the clock's `Started`/`Stopped` events. They fire
+  **inline, synchronously**, on whatever thread starts or pauses the clock (not the dispatcher): the host thread for
+  `Start()`/`Stop()`, or the `SimClock` thread itself when a `RunFor(...)` boundary auto-pauses. So a halt/unhalt over an
+  independent control link is *immediate*, never queued behind data work. `OnRunStarted` runs after the sites have
+  started; `RunFor` returns only after `OnRunStopped` has finished.
 
 ### The author surface
 
 | Member | What it is |
 |---|---|
-| `protected virtual void OnRunStarted()` | Clock started/resumed — inline on the clock thread. Unhalt the hardware and (re)spawn the reader thread. |
-| `protected virtual void OnRunStopped()` | Clock paused — inline on the clock thread. Halt the hardware and cancel + join the reader thread. |
+| `LooselyCoupledServiceBase(IClock timeKeeper, ILogger logger, string name)` | The base constructor. No queue capacity — the site has no sim-time queue. Your service still needs a public `(IClock, ILogger)` constructor. |
+| `protected virtual void OnRunStarted()` | Clock started/resumed — inline on the thread that started it. Unhalt the hardware and (re)spawn the reader thread. |
+| `protected virtual void OnRunStopped()` | Clock paused — inline on the thread that paused it. Halt the hardware and cancel + join the reader thread. |
 | `public virtual void Configure()` | After wiring; open sockets here (the dispatcher hasn't started yet). |
-| `public virtual void Dispose()` | Final teardown — close sockets, cancel/join the reader. |
+| `public virtual void Dispose()` | Final teardown, with the dispatcher thread already stopped — close sockets, cancel/join the reader. |
 | `Site` (an `IDispatcherSite`) | The dispatcher. Your generated `Ch*Tx` handlers marshal onto it (inline send); your reader `Post`s inbound onto it. |
 
 The canonical shape, as an EGSE would write it:
@@ -355,14 +394,14 @@ public partial class Egse : LooselyCoupledServiceBase
 
     public override void Configure() => _link = Connect();     // open sockets; OBC halted
 
-    protected override void OnRunStarted()                     // clock thread: unhalt + start reading
+    protected override void OnRunStarted()                     // starting thread: unhalt + start reading
     {
         _link.Unhalt();
         _rx = new CancellationTokenSource();
         _rxThread = new Thread(() => ReadLoop(_rx.Token)) { IsBackground = true };
         _rxThread.Start();
     }
-    protected override void OnRunStopped()                     // clock thread: halt + stop reading
+    protected override void OnRunStopped()                     // pausing thread: halt + stop reading
     {
         _link.Halt(); _rx?.Cancel(); _link.WakeReader(); _rxThread?.Join();
     }
@@ -384,6 +423,10 @@ public partial class Egse : LooselyCoupledServiceBase
 - **`Site`** is still an `IDispatcherSite`, so the **same** `[ServiceEvent]`/`[ServiceRequest]`/`[ServiceRef]` plumbing
   works unchanged — a model marshals a request in exactly as it would to a sim-paced service; it just runs on the
   dispatcher. There is **no `Scheduler`**: a loosely-coupled site has no sim-time queue.
+- The dispatcher has **no error channel**. Unlike a `SimSite`, it does not catch: an exception escaping work it runs
+  through `Post` (your reader's inbound work, a `[ServiceEvent]` callback or a global-event handler delivered to it) is
+  unhandled on the dispatcher thread. Catch inside that work yourself. A `[ServiceRequest]` handler is safe: its
+  exception faults the caller's `Task` instead.
 - The link's **read and write paths must be independent** (separate sockets) — the reader thread and the dispatcher
   touch them concurrently.
 - The **assembly declares it like any other service** (a `Services:` entry); the generator routes it to the clock-ungated
@@ -402,5 +445,5 @@ public partial class Egse : LooselyCoupledServiceBase
   path (which services never have).
 - **[The assembly](#/guide/the-assembly)** — declaring services and binding `[ServiceRef]` deps by name.
 - **[Global events](#/guide/events)** — the ownerless, multi-producer sibling of `[ServiceEvent]`: a scheduler-less
-  pub/sub channel any model can fire, decoupled from any service.
+  pub/sub channel any model or service can fire, owned by none of them.
 - **[Interaction patterns](#/guide/interaction-patterns)** — putting events and requests together into real flows.

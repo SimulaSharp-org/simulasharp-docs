@@ -35,14 +35,19 @@ core. If you need the delivery to be ordered against the simulation clock, sched
 [scheduler](#/guide/event-queue-and-scheduling) instead; a global event is for out-of-band "this just happened" fan-out.
 
 > **A faulty handler can't take the site down.** Because delivery is a `Post` onto the subscriber's own site, a handler
-> that throws is caught and logged **there** — by the site that ran it (under the `SimulatorThreads.<site>` logger) —
-> then dropped. One misbehaving subscriber never crashes the site or stops the other subscribers.
+> that throws is caught and logged at **Error** **there** — by the site that ran it (a model's site logs under
+> `SimulatorThreads.<site>`, a `ServiceBase` site under the service's own logger) — then dropped. One misbehaving
+> subscriber never crashes the site or stops the other subscribers. The one exception is a subscriber that is a
+> [loosely-coupled service](#/guide/services): its dispatcher does not catch, so its handler must catch its own errors.
 
 ## The two attributes
 
-A model touches a global event through exactly one of two member-level attributes — never both. A **producer** holds a
-trigger handle; a **consumer** exposes a handler method. (Producers can't subscribe, and subscribers get no way to
-fire — the split is deliberate.)
+A model or service touches a global event through two member-level attributes, one per role. A **producer** member
+holds a trigger handle; a **consumer** method is a handler. (A trigger handle can't subscribe, and a handler gets no way
+to fire — the split is deliberate.) One model or service may hold both kinds of member, even for the same event.
+
+Both kinds of member are found on the type or any of its base classes, and both must be reachable from the generated
+simulator, which calls the handler and assigns the handle — make them `public` (or `internal`).
 
 ### `[EventHandler]` — subscribe (consumer)
 
@@ -96,10 +101,13 @@ every subscriber — model or service — uniformly.
 
 ## Wiring it in the assembly
 
-A global event is declared once, under a top-level **`Events:`** block (a sibling of `Services:` under `Simulator:`),
-then wired to producers and consumers per model instance:
+A global event is declared once, under a top-level **`Events:`** block (a sibling of `Services:` and `Sites:` under
+`Simulator:`), then wired to producers and consumers per model or service instance. Each entry has a `Name`, an
+optional `ArgType` and an optional `Type`. Both type keys take a **fully-qualified type name** — `System.Double`, not
+`double` — and a name that can't be resolved is SIM028. A custom `Type` needs a public parameterless constructor, since
+the simulator creates it with `new`.
 
-- a model **or service** instance's **`Triggers:`** block binds an `[EventReference]` producer member to an event;
+- a model (under `Sites:`) **or service** (under `Services:`) instance's **`Triggers:`** block binds an `[EventReference]` producer member to an event;
 - a model **or service** instance's **`Subscriptions:`** block binds an `[EventHandler]` consumer method to an event.
 
 ```yaml
@@ -107,7 +115,7 @@ Simulator:
   Events:
     - Name: BusFault
       ArgType: System.Double        # optional; omit → an argless SimEvent
-      Type: Demo.RoutingEvent       # optional; default is SimEvent / SimEvent<ArgType>
+      # Type: Demo.MyEvent          # optional custom ISimEvent<…>; default is SimEvent / SimEvent<ArgType>
   Sites:
     - Name: Bus
       Models:
@@ -126,7 +134,7 @@ Simulator:
 Both `Triggers` and `Subscriptions` are lists of single-key maps — `{ <member>: <eventName> }` — so one instance can
 wire several. The generator **strict-types every wiring at build time**: the event must be declared, the handler must be
 a `void` `[EventHandler]` of matching arity, the producer member must be a matching `[EventReference]`, and (for a
-custom event) the subscriber must be assignable to `TSub`. See the [diagnostics](#diagnostics-sim023sim028) below and
+custom event) the subscriber must be assignable to `TSub`. See the [diagnostics](#diagnostics--sim023sim028) below and
 the full [Assembly YAML reference](#/guide/assembly-yaml-reference).
 
 ## The `BusFault` example, end to end
@@ -194,7 +202,8 @@ almost always.
 
 You reach for a **custom** event only when the *routing* itself carries logic — a bus or router that must deliver to
 *some* subscribers and not others, keyed on their identity. You implement the interface directly, choosing a narrower
-`TSub`, and own your locking (your event may be registered against from your own code paths, not just at assembly time):
+`TSub`. The simulator still registers every subscriber synchronously at assembly time, but a custom event that changes
+its routing state at trigger time owns its own synchronization:
 
 ```csharp
 // A router keyed on the subscribing node — delivers a transfer only to the addressed node.
@@ -205,9 +214,10 @@ public sealed class RoutingEvent : ISimEvent<IBusNode, TransferStruct>
 }
 ```
 
-Declare it with `Type: Demo.RoutingEvent` in the `Events:` block. Because its `TSub` is `IBusNode` (not the stock
-`object`), every subscriber **must** be an `IBusNode` — the generator enforces it ([SIM026](#diagnostics-sim023sim028)),
-and a `Type` that doesn't implement `ISimEvent<…>` or disagrees with the declared `ArgType` is [SIM028](#diagnostics-sim023sim028).
+Declare it with `Type: Demo.RoutingEvent` in the `Events:` block; the payload comes from the type, so `ArgType` may be
+omitted (if given, it must name the same `TransferStruct`). Because its `TSub` is `IBusNode` (not the stock
+`object`), every subscriber **must** be an `IBusNode` — the generator enforces it ([SIM026](#diagnostics--sim023sim028)),
+and a `Type` that doesn't implement `ISimEvent<…>` or disagrees with the declared `ArgType` is [SIM028](#diagnostics--sim023sim028).
 
 ## Diagnostics — SIM023–SIM028
 
@@ -217,11 +227,11 @@ is not emitted — fix the reported id and rebuild.
 | ID | Meaning | Fix |
 |---|---|---|
 | **SIM023** | Unknown event. | A `Subscriptions`/`Triggers` entry names an event not declared under `Events:` — add it or correct the name. |
-| **SIM024** | Invalid event handler. | The `Subscriptions` method is missing, not `[EventHandler]`, or not `void` — mark a `void` method with `[EventHandler]`. |
+| **SIM024** | Invalid event handler. | The `Subscriptions` method is missing (on the type and its base classes), not `[EventHandler]`, or not `void` — mark a `void` method with `[EventHandler]`. |
 | **SIM025** | Handler signature mismatch. | Wrong arity/payload — an argless event needs a 0-parameter handler; a typed event needs a single parameter the payload is assignable to. |
 | **SIM026** | Wrong subscriber type. | The subscriber isn't assignable to the event's `TSub` — the stock event accepts all (`object`); a custom event's `TSub` may be narrower. |
-| **SIM027** | Invalid event reference. | The `Triggers` member isn't `[EventReference]`, or isn't typed as the matching `ISimEventInvocator` / `ISimEventInvocator<T>`. |
-| **SIM028** | Invalid event type. | A custom `Type` doesn't implement `ISimEvent<…>`, or disagrees with the declared `ArgType` — align the type and its argument. |
+| **SIM027** | Invalid event reference. | The `Triggers` member is missing, isn't `[EventReference]`, or isn't typed as the matching `ISimEventInvocator` / `ISimEventInvocator<T>`. |
+| **SIM028** | Invalid event type. | The `ArgType` or `Type` can't be resolved, a custom `Type` doesn't implement `ISimEvent<…>`, or it disagrees with the declared `ArgType` — use fully-qualified names and align the type and its argument. |
 
 ## Where to go next
 
