@@ -50,6 +50,6 @@ foreach ($t in $targets) {
   }
 }
 
-$index = [ordered]@{ generated = (Get-Date -Format "yyyy-MM-dd"); assemblies = $collected }
+$index = [ordered]@{ assemblies = $collected }
 Write-Lf (Join-Path $outDir "index.json") (($index | ConvertTo-Json -Depth 5) + "`n")
 Write-Host "wrote $($outDir)\index.json ($($collected.Count) assemblies)" -ForegroundColor Cyan

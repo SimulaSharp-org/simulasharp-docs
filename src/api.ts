@@ -33,7 +33,6 @@ export interface TypeNode {
 
 export interface NsNode { name: string; types: TypeNode[] }
 export interface ApiModel {
-  generated: string;
   assemblies: string[];
   namespaces: NsNode[];
   types: Map<string, TypeNode>;   // by full name
@@ -261,5 +260,5 @@ export async function loadApiModel(base = "./api"): Promise<ApiModel> {
   const namespaces: NsNode[] = [...nsMap.entries()]
     .map(([name, tps]) => ({ name, types: tps.sort((a, b) => a.name.localeCompare(b.name)) }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  return { generated: index.generated, assemblies, namespaces, types: all };
+  return { assemblies, namespaces, types: all };
 }
