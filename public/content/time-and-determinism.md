@@ -51,10 +51,14 @@ Because a period is *real* time, choosing one is a real-time-systems decision, n
 
 ## `RunFor`: bounded, scripted, repeatable
 
-The primitive for scripted runs and tests is [`RunFor(durationUs)`](#/api/type/SimulaSharp.Kernel.Services.SimClock). It
-arms an auto-pause at `now + duration`, starts the clock, and **blocks the caller** until the horizon reaches the
-target, at which point the *clock thread itself* pauses. It is **not** a fast-forward — it takes ~`durationUs` of real
-time — it's a clean, automatic boundary.
+The primitive for scripted runs and tests is [`RunFor(durationUs)`](#/api/type/SimulaSharp.Kernel.Services.ISimulator)
+(on the simulator, which forwards to the [`SimClock`](#/api/type/SimulaSharp.Kernel.Services.SimClock)). It arms an
+auto-pause at `now + duration`, starts the clock, and **blocks the caller** until the horizon reaches the target, at
+which point the *clock thread itself* pauses. It is **not** a fast-forward — it takes ~`durationUs` of real time — it's
+a clean, automatic boundary.
+
+`RunFor` drives the clock only. The site threads are started by the simulator's first `Start()`, so call `Start()` once
+after `Configure()`, then `RunFor` as often as you like. Without that `Start()`, time advances but no model code runs.
 
 ```mermaid
 sequenceDiagram
@@ -76,7 +80,7 @@ sequenceDiagram
 You chain `RunFor` calls to script a run — advance 200 ms, poke a knob, advance another 500 ms, assert — each segment a
 controlled real-time span. Because the clock thread performs the pause, the caller never races the horizon writer, and
 overshoot is bounded to the spin granularity (sub-µs to a few µs). Under the hood `RunFor` builds on
-`PauseAtSimUs(target)`; a manual `Pause()` disarms it.
+`PauseAtSimUs(target)`; a manual `Pause()` (the simulator's `Stop()`) disarms it and also releases the blocked caller.
 
 ## Why there is no manual/logical clock
 
@@ -100,20 +104,23 @@ reintroduce exactly the cross-site unsoundness above. Two complementary approach
 
 ### 1. Real clock + `RunFor` + a bounded `WaitUntil`
 
-Run a real, short span and assert on the outcome. Because sites are asynchronous, don't assert the instant `RunFor`
-returns state that a *cross-site* effect produced — spin on a condition with a **bounded** timeout so a failing test
-fails fast instead of hanging:
+Run a real, short span and assert on the outcome. Sites run on their own threads: when `RunFor` returns, the clock is
+paused, but a site may still be finishing the pass it was in. So don't read site state the instant `RunFor` returns —
+spin on a condition with a **bounded** timeout so a failing test fails fast instead of hanging. (A paused site does not
+drain its inbox, so cross-site work still queued at the pause only runs on the next `Start()`/`RunFor`.)
 
 ```csharp
 using var sim = new PlantSimulator();
 sim.Configure();
+sim.Start();                            // starts the site threads (and the clock)
 
 sim.RunFor(500_000);                    // advance 500 ms of real time, then pause
 
 // Bounded wait for an async condition (no fake clock; fail fast if it never holds).
-bool ok = WaitUntil(() => sim.Knobs.Read("Plant.Plant1.UnitA.SoC") < 0.9,
+Knob soc = sim.Knobs.Single(k => k.Path == "Plant.Plant1.UnitA.SoC");
+bool ok = WaitUntil(() => (double)soc.Read()! < 0.9,
                     timeout: TimeSpan.FromSeconds(1));
-Assert.True(ok, "SoC should have dropped within budget");
+Assert.That(ok, Is.True, "SoC should have dropped within budget");
 
 static bool WaitUntil(Func<bool> cond, TimeSpan timeout)
 {
@@ -134,17 +141,21 @@ For unit-testing scheduling logic itself, you don't need the clock thread at all
 [`EventQueue`](#/api/type/SimulaSharp.Kernel.Services.EventQueue) is testable **synchronously** via `ProcessDue(nowUs)`:
 drive `nowUs` yourself and fire everything due at or before it, on the calling thread, deterministically.
 
+At this level there is no "now" to be relative to, so the queue's own verbs take an **absolute** due time
+(`AddEvent(action, dueTimeUs)`, `AddPeriodic(action, dueTimeUs, periodUs)`, `AddCoroutine(factory, dueTimeUs)`) — the
+site's relative `IScheduler` verbs are thin wrappers that add the current horizon.
+
 ```csharp
-var q = new EventQueue(maxEvents: 64);
+var q = new EventQueue(maxCapacity: 64);
 int fired = 0;
-q.AddPeriodicEvent(() => fired++, periodUs: 10_000);
+q.AddPeriodic(() => fired++, dueTimeUs: 10_000, periodUs: 10_000);
 
 q.ProcessDue(9_999);    // nothing due yet
-Assert.Equal(0, fired);
+Assert.That(fired, Is.EqualTo(0));
 q.ProcessDue(35_000);   // 10/20/30 due — bursts one per pass
 q.ProcessDue(35_000);
 q.ProcessDue(35_000);
-Assert.Equal(3, fired); // absolute re-arm replayed the backlog exactly
+Assert.That(fired, Is.EqualTo(3)); // absolute re-arm replayed the backlog exactly
 ```
 
 This is the deterministic core: no threads, no wall clock, exact control over "now." Use it to test the *scheduling*
@@ -182,7 +193,7 @@ hardware-in-the-loop, and an operator in the loop. Design within that and it cos
 | You want to… | Do this |
 |---|---|
 | Read "now" in a model | `TimeKeeper.SimNowUs` |
-| Run a bounded, scripted span | `RunFor(durationUs)` — chain calls to script |
+| Run a bounded, scripted span | `Start()` once, then `RunFor(durationUs)` — chain calls to script |
 | Rerun a scenario from zero | build a **new** simulator (no reset) |
 | Test end-to-end behaviour | real clock + `RunFor` + bounded `WaitUntil`; assert rates/counts |
 | Test scheduling logic deterministically | `EventQueue.ProcessDue(nowUs)` — synchronous |

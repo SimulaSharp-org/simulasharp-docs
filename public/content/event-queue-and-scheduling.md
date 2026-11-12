@@ -27,7 +27,19 @@ time the instant you call, by reading the horizon:
 ```csharp
 public int AddEvent(Action action, long delayUs) =>
     _events.AddEvent(action, _clock.SimNowUs + delayUs);
+
+public int AddPeriodicEvent(Action action, long periodUs) =>
+    _events.AddPeriodic(action, _clock.SimNowUs + periodUs, periodUs);
 ```
+
+The [`EventQueue`](#/api/type/SimulaSharp.Kernel.Services.EventQueue) underneath only knows absolute due times: its own
+verbs are `AddEvent(action, dueTimeUs)`, `AddPeriodic(action, dueTimeUs, periodUs)` and
+`AddCoroutine(factory, dueTimeUs)`. Models never see it — they hold an `IScheduler` — but tests can drive it directly
+(see [time & determinism](#/guide/time-and-determinism)).
+
+A model reaches its site through `ModelBase.Scheduler`. A sim-paced service (`ServiceBase`) has its own site and a
+protected `Scheduler` with the same verbs. A `LooselyCoupledServiceBase` has no event queue at all: its site is a plain
+dispatcher, not an `IScheduler`.
 
 **Actions receive no time argument.** When a fired action needs to know "now", it reads `IClock.SimNowUs` itself (or
 `TimeKeeper.SimNowUs` on `ModelBase`). This keeps the fired action's notion of *now* honest: it sees the horizon at
@@ -39,8 +51,12 @@ Every `Add*` returns an **event id** — which is literally the slot index in th
 schedule. You get -1 when:
 
 - the **queue is full** (no free slot), or
-- the resulting due time is **negative** (a negative delay), or for periodic, a **non-positive period**, or
+- the resulting absolute due time is **negative** (a negative delay larger than the current horizon), or for periodic,
+  a **non-positive period**, or
 - for the mission-time forms, the instant is **already in the past** (`MissionDueUs` returns -1 for a past instant).
+
+A negative delay that still lands at or after sim time 0 is accepted: the work is simply already due and fires on the
+next pass. The `IScheduler` doc comments only mention the full-queue case, but all of the above apply.
 
 ```csharp
 int id = Scheduler.AddPeriodicEvent(Tick, periodUs: 10_000);
@@ -49,6 +65,11 @@ if (id < 0) { /* queue full — surface it; don't silently drop the work */ }
 
 Hold the id if you might cancel: `RemoveEvent(id)` cancels a still-pending event. It's a no-op if the id is unknown, the
 event already fired, or it's currently in the due-batch mid-pass (it can't be pulled out of a pass in flight).
+
+That last case has a trap: a periodic that calls `RemoveEvent` on its **own** id from inside its handler is in the
+batch being fired, so the call is a no-op and the periodic re-arms as usual. To stop a periodic from its own handler,
+defer the removal by one pass — `Scheduler.AddEvent(() => Scheduler.RemoveEvent(_tickId), 0)` — or guard the handler
+with a flag.
 
 ### Mission-time scheduling
 
@@ -97,8 +118,10 @@ flowchart LR
 
 ## ProcessDue: two phases, on purpose
 
-The run loop calls `ProcessDue(nowUs)` every pass with the current horizon. It fires everything due at or before `nowUs`
-— but in **two distinct phases**, and that split is the source of an important guarantee.
+The site's run loop, on each pass, first drains its inbox (cross-thread work), then calls `ProcessDue(nowUs)` with the
+current horizon. If nothing is due within 200 µs it then parks until the clock wakes it at `PeekNextDueTime()` (see
+[time & the clock](#/guide/time-and-clock)). `ProcessDue` fires everything due at or before `nowUs` — but in **two
+distinct phases**, and that split is the source of an important guarantee.
 
 ```mermaid
 flowchart TB
@@ -154,21 +177,26 @@ flowchart TB
   TRY -->|coroutine| CO["materialize factory on first fire<br/>MoveNext()"]
   CO --> COY{yielded?}
   COY -->|"Await(task)"| PARK["park slot — no time-schedule<br/>OnAwait(slot, version, task)"]
+  COY -->|"Await(task, timeoutUs, token)"| PARKT["park slot<br/>OnAwaitTimed(slot, version, task, timeoutUs, token)"]
   COY -->|"Delay/Immediate"| REQ["DueTimeUs += delay<br/>re-enqueue"]
   COY -->|"MoveNext false"| DISP["Dispose + free slot"]
   TRY -->|one-shot| OS["run action"]
   OS --> PER{PeriodUs &gt; 0?}
   PER -->|yes| REARM["DueTimeUs += PeriodUs<br/>re-enqueue"]
   PER -->|no| FREE1["free slot"]
-  TRY -.->|throws| CATCH["drop entry · dispose coroutine · free slot<br/>(never retried)"]
+  TRY -.->|throws| CATCH["log at Error · drop entry<br/>dispose coroutine · free slot<br/>(never retried)"]
 ```
 
 - A **one-shot** runs, then its slot is freed.
 - A **periodic** runs, then re-arms (below).
 - A **coroutine** is materialized on first fire, stepped once, and either re-scheduled by its yield, parked on an
-  `Await`, or disposed when it completes — see [coroutines](#/guide/coroutines).
+  `Await` (unbounded, or bounded by a sim-time timeout), or disposed when it completes — see
+  [coroutines](#/guide/coroutines). A yielded delay is added to the entry's **scheduled** due time, like a periodic
+  re-arm, so a chain of `Delay` steps does not drift.
 - If an entry **throws**, it is dropped — never retried — its coroutine (if any) is disposed so no iterator resources
-  leak, and its slot is reclaimed. One misbehaving event can't take down the site or wedge the queue.
+  leak, and its slot is reclaimed. The exception is **logged at `Error`** on the site's error channel (a root site logs
+  under `SimulatorThreads.<site>`, a service's site under the service's own logger), not swallowed. One misbehaving
+  event can't take down the site or wedge the queue.
 
 ## Periodic re-arm is absolute — so it bursts to catch up
 
@@ -228,20 +256,33 @@ Contrast that with the naive alternative — re-arming off "now":
 
 Two smaller details worth knowing:
 
-- **Capacity** is fixed at `maxEvents` (the `SimSite` constructor default is `64`). Once every slot is live, further
-  `Add*` calls return **-1** until something frees a slot. Size it for your peak concurrent pending count; a full queue
-  is a real condition your model code should handle, not ignore.
+- **Capacity** is fixed per site at construction (default `64`). For a model site, set it with the site's `MaxEvents:`
+  key in the assembly YAML; for a sim-paced service, pass `maxEvents` to the `ServiceBase` constructor. Once every slot
+  is live, further `Add*` calls return **-1** until something frees a slot. Size it for your peak concurrent pending
+  count; a full queue is a real condition your model code should handle, not ignore. A coroutine parked on a **bounded**
+  `Await` holds its own slot plus one more for its timeout deadline; if that second slot is not available, the site logs
+  an error and the await runs unbounded.
+
+```yaml
+Sites:
+  - Name: Main
+    MaxEvents: 256      # this site's event-queue capacity (default 64)
+    Models:
+      # ...
+```
+
 - The **`Version`** counter on each slot guards against a **stale re-arm**. When a coroutine parks on an `Await`, the
-  site later calls `ReArm(slot, version, now)` from a task continuation. If, in the meantime, the slot was freed and
-  reused for something else, its `Version` will have been bumped and the `ReArm` no-ops — so a completing task can never
-  resurrect or corrupt a recycled slot. (More on this in [coroutines](#/guide/coroutines).)
+  site later calls `ReArm(slot, version, now)` on its own thread (posted through its inbox when the task completes, or
+  from the timeout deadline). If, in the meantime, the slot was freed and reused for something else, its `Version` will
+  have been bumped and the `ReArm` no-ops — so a completing task can never resurrect or corrupt a recycled slot. A
+  re-armed coroutine resumes at the then-current horizon. (More on this in [coroutines](#/guide/coroutines).)
 
 ## Worked example: a periodic in `Configure()`
 
 A model registers its recurring work once, typically in `Configure()`, using its own `Scheduler`:
 
 ```csharp
-public sealed partial class Pump : ModelBase
+public sealed partial class Pump(IClock c, IScheduler s, ILogger l) : ModelBase(c, s, l)
 {
     private int _tickId = -1;
 
@@ -261,6 +302,7 @@ public sealed partial class Pump : ModelBase
     }
 
     // If you ever need to stop it:  Scheduler.RemoveEvent(_tickId);
+    // (from outside Step — inside Step it is a no-op, see "Return value" above)
 }
 ```
 
@@ -273,7 +315,8 @@ public sealed partial class Pump : ModelBase
 | Do something at an absolute mission instant | `AddEventAtMission(action, missionUs)` |
 | Run a long, time-stepped process | `AddCoroutine(factory, delay)` → [coroutines](#/guide/coroutines) |
 | Cancel pending work | keep the returned id; `RemoveEvent(id)` |
-| Know your next-due time | `PeekNextDueTime()` |
+| Know your next-due time (queue level, e.g. in tests) | `EventQueue.PeekNextDueTime()` |
 | React to a full queue | check for a **-1** return and handle it |
+| Give a site more room | `MaxEvents:` on the site in the assembly YAML |
 
 Next: the process abstraction that rides on this queue — **[coroutines (SimYield)](#/guide/coroutines)**.
