@@ -45,6 +45,8 @@ This is the **definitive guide to *designing* simulators** with SimulaSharp. It 
 - **Scenarios** — worked, end-to-end builds, from [hello-sim](#/guide/scenario-hello-sim) up to a
   [multi-subsystem satellite topology](#/guide/scenario-satellite).
 - **[API reference](#/api)** — generated from the code, browsable by namespace → type → member.
+- **[Source & packages](#/guide/source-and-packages)** — the GitHub repositories, the NuGet packages, and how to
+  report issues or contribute.
 
 New here? Start with the [introduction](#/guide/introduction) and [the big picture](#/guide/big-picture).
 
