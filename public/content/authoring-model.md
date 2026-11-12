@@ -8,10 +8,10 @@ You build a SimulaSharp simulator out of **three kinds of thing**, and nothing e
 | **Services** | a shared capability many models use | [`ServiceBase`](#/api/type/SimulaSharp.Kernel.Model.ServiceBase) | its **own** SimSite (every call cross-thread) |
 | **Assemblies** | the topology — who exists, where | a `*.simassembly.yaml` file | build input, not runtime code |
 
-The first two are C#. The third is a small YAML file. A Roslyn **[source generator](#/guide/big-picture)** reads all
-three at build time and emits a strongly-typed `<Name>Simulator` that constructs the tree, wires every association,
-applies config, and exposes knobs and plottables. There is no reflective engine at runtime — your simulation *is*
-compiled code.
+The first two are C#. The third is a small YAML file. A set of Roslyn **[source generators](#/guide/big-picture)** reads
+all three at build time and emits a strongly-typed `<Name>Simulator` that constructs the tree, wires every association,
+applies parameters, and exposes knobs, plottables and parameters. There is no reflective engine at runtime — your
+simulation *is* compiled code.
 
 ```mermaid
 flowchart LR
@@ -23,8 +23,8 @@ flowchart LR
   M --> GEN
   S --> GEN
   Y --> GEN
-  GEN["SimulatorGenerator<br/>(+ Ref / Knob / Plottable / Config / Service gens)"] --> SIM["PlantSimulator : SimulatorBase"]
-  GEN -.->|"topology errors ⇒ SIM001–SIM020"| ERR["build errors"]
+  GEN["SimulatorGenerator<br/>(+ Containment / Reference / Ref / Knob / Plottable / Parameter / Service gens)"] --> SIM["PlantSimulator : SimulatorBase"]
+  GEN -.->|"errors ⇒ SIM001–SIM030"| ERR["build errors"]
   SIM --> RUN["runs on the Kernel:<br/>SimClock + parallel SimSites"]
 ```
 
@@ -58,7 +58,7 @@ public sealed partial class Heartbeat(IClock c, IScheduler s, ILogger l) : Model
     public override void Configure()
         => Scheduler.AddPeriodicEvent(Beat, periodUs: 1_000_000);   // once a second of real time
 
-    private void Beat() => Logger.Info($"tick @ {TimeKeeper.SimNowUs}us");
+    private void Beat() => Logger.LogInformation($"tick @ {TimeKeeper.SimNowUs}us");
 }
 ```
 
@@ -74,9 +74,9 @@ Two things structure everything else you write:
   **interface** and gives you a generated `<I>Ref` accessor that auto-dispatches — synchronous if same-site,
   marshalled if cross-site (schedulers captured at construction). See [associations](#/guide/associations).
 
-> **Consequence for design.** A model that touches any generated member — a knob, a `[Parameter]`, a `[CrossReference<T>]` — must
-> be declared **`partial`**, so the generator can weave in its half. A model with none can be `sealed`. When in doubt,
-> mark it `partial`; it costs nothing.
+> **Consequence for design.** Every model must be declared **`partial`** — even one with no knobs, parameters or
+> references. The generated simulator applies parameters to every instance, so the generator weaves a (possibly empty)
+> half into each model; a model that is not `partial` is a build error (`SIM029`). `sealed partial` is fine.
 
 Full chapter: [models & containment](#/guide/models-and-containment). Worked build:
 [Hello, simulator](#/guide/scenario-hello-sim).
@@ -118,8 +118,10 @@ public partial class RangeService : ServiceBase
 
 The generator emits the plumbing: `RegisterCallback_RangeUpdated(IDispatcher, Action<double>)` and
 `Trigger_RangeUpdated(double)` for the event, and a public `Task<int> Allocate(int)` over your `Handle_Allocate`. A
-model gets a handle by declaring a `[ServiceRef]` member, which the assembly binds by name. Like a codegen-using model,
-a service **must be `partial`**.
+request handler takes at most one parameter (`SIM022` otherwise). A model gets a handle by declaring a
+[`[ServiceRef]`](#/api/type/SimulaSharp.Kernel.Attributes.ServiceRefAttribute) member, which the assembly's `Deps:`
+block binds by name; a service may hold `[ServiceRef]`s to other services too, even cyclically. Like every model, a
+service **must be `partial`**, and it needs a public `(IClock, ILogger)` constructor.
 
 There are **two service kinds**. The `ServiceBase` above is *sim-paced* — its site runs on the clock and parks on
 pause. A service that owns I/O living **outside** sim time (real hardware, a HIL link) instead derives
@@ -128,6 +130,10 @@ dispatcher, with its own I/O reader thread and inline run-state hooks. The same
 `[ServiceEvent]`/`[ServiceRequest]`/`[ServiceRef]` plumbing works on both, and the
 assembly declares them identically.
 
+Broadcast does not need a service, though. A **global event** is an ownerless pub/sub channel declared in the
+assembly's `Events:` block: any model *or* service can subscribe with an `[EventHandler]` method and trigger it through an
+`[EventReference]` member. See [global events](#/guide/events).
+
 Full chapter: [services](#/guide/services). The *when* — model vs service — is [model vs service](#/guide/model-vs-service).
 
 ---
@@ -135,8 +141,9 @@ Full chapter: [services](#/guide/services). The *when* — model vs service — 
 ## 3. Assemblies — the topology, in YAML
 
 The two C# artifacts say *what a model is*. The **assembly** says *what exists and where it runs*: it names the sites
-(threads), the services, and the model tree, and supplies each model's config. A model never `new`s a child, never calls
-fills its containers, never picks a scheduler — the assembly declares it and the generated simulator does all three.
+(threads), the services, the global events and the model tree, and supplies each instance's parameters. A model never
+`new`s a child, never fills its containers, never picks a scheduler — the assembly declares it and the generated
+simulator does all three.
 
 ```yaml
 Simulator:
@@ -165,14 +172,17 @@ Simulator:
             - Tracker: Tracker              # binds [ServiceRef] Tracker by name
 ```
 
+Reference targets are full instance paths: the simulator name, then each model name down the tree
+(`Plant.Plant1.UnitB`).
+
 The single most consequential thing in this file is the **`Sites:` block** — it is where you set the topology. Every
 root model under one `Site` (and its whole containment subtree) shares that site's thread; different `Site` entries run
 in parallel. Choosing that partition well is the central design decision:
 [choosing a topology](#/guide/choosing-a-topology).
 
 If anything in the YAML doesn't match your real types — an unknown type, a container/element mismatch, a dangling
-reference — it is a **compile error** (`SIM001`–`SIM020`), not a runtime surprise. Full chapter:
-[the assembly](#/guide/the-assembly).
+reference, an intra-site reference that crosses a site — it is a **compile error** (`SIM001`–`SIM018` and
+`SIM023`–`SIM028` for the assembly), not a runtime surprise. Full chapter: [the assembly](#/guide/the-assembly).
 
 ---
 
@@ -183,14 +193,14 @@ flowchart TB
   subgraph you["You author"]
     MODELS["Models (ModelBase)<br/>state · Configure · Container/Reference"]
     SVCS["Services (ServiceBase)<br/>ServiceEvent · ServiceRequest"]
-    ASM["Assembly YAML<br/>Sites · Models · Services · Config · Deps"]
+    ASM["Assembly YAML<br/>Sites · Models · Services · Events · Config · Deps"]
   end
   MODELS -->|"types & members"| GEN
   SVCS -->|"types & members"| GEN
   ASM -->|"topology & config"| GEN
   GEN["Source generators"] --> OUT["&lt;Name&gt;Simulator : SimulatorBase"]
-  OUT --> LIFE["construct → Configure → Start → Stop → Dispose"]
-  LIFE --> OBS["Knobs · Plottables · Log entries<br/>(the surfaces a UI binds to)"]
+  OUT --> LIFE["construct (assembles) → Configure → Start / RunFor → Stop → Dispose"]
+  LIFE --> OBS["Knobs · Plottables · Parameters · Log entries<br/>(the surfaces a UI binds to)"]
 ```
 
 - You **write** Models and Services (annotated C#) and an **Assembly** (YAML).

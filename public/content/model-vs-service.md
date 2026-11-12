@@ -2,8 +2,8 @@
 
 You've decided some capability needs to exist. The next question is *what kind of artifact* it should be — a
 [**Model**](#/guide/models-and-containment) or a [**Service**](#/guide/services). They look similar (both derive a base,
-both have `Configure()`, both run on a SimSite) but they answer different questions and have opposite threading
-contracts. Choosing wrong makes your topology awkward; choosing right makes it obvious.
+both have `Configure()`, both run on a site, both must be `partial`) but they answer different questions and have
+opposite threading contracts. Choosing wrong makes your topology awkward; choosing right makes it obvious.
 
 ## The one-line test
 
@@ -51,11 +51,14 @@ flowchart TB
 | Is it point-to-point or many-to-one? | point-to-point | many-to-one / broadcast |
 | Does "contained by X" describe it naturally? | yes | no — it floats above the tree |
 | Would putting it in one subtree force *everyone else* to cross into that subtree? | no | yes — that's the smell of a service |
-| Fan-out broadcast to subscribers? | no primitive for it | `[ServiceEvent]` is exactly this |
+| Fan-out broadcast to subscribers? | a [global event](#/guide/events) — any model can trigger it | `[ServiceEvent]`, or a global event |
 
-The last two rows are the tell. If making something a model would force half the tree to hold a cross-site
-`[CrossReference<T>]` into one subtree just to reach it, it wants to be a service. And if you need *broadcast* — "range
-updated," "eclipse started" — only a service's [`[ServiceEvent]`](#/guide/services) gives you fan-out.
+The second-to-last row is the tell. If making something a model would force half the tree to hold a cross-site
+`[CrossReference<T>]` into one subtree just to reach it, it wants to be a service. *Broadcast* alone — "range updated,"
+"eclipse started" — is no longer a reason for a service: a [global event](#/guide/events) is an ownerless pub/sub
+channel declared in the assembly's `Events:` block, which any model or service may trigger (`[EventReference]`) and
+subscribe to (`[EventHandler]`). A service's [`[ServiceEvent]`](#/guide/services) is the right fan-out when the
+*service* is the one publisher, because it owns the state that changed.
 
 ## Decision flow
 
@@ -70,10 +73,11 @@ flowchart TD
   Q2 -->|"no — many models need it"| Q3
   Q3{"Point-to-point link to a<br/>specific peer, or broadcast/<br/>shared by many?"}
   Q3 -->|"point-to-point"| REF["MODEL + CrossReference&lt;T&gt;<br/>(a link, not ownership)"]
-  Q3 -->|"broadcast / shared resource /<br/>blackboard"| SVC["SERVICE<br/>own site · ServiceEvent / ServiceRequest"]
+  Q3 -->|"shared resource /<br/>blackboard"| SVC["SERVICE<br/>own site · ServiceEvent / ServiceRequest"]
+  Q3 -->|"broadcast only,<br/>no shared state"| EVT["GLOBAL EVENT<br/>Events: · EventHandler / EventReference"]
   classDef m fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
   classDef s fill:#fef9c3,stroke:#ca8a04,color:#713f12;
-  class MODEL,REF m;
+  class MODEL,REF,EVT m;
   class SVC s;
 ```
 
@@ -93,6 +97,7 @@ genuinely *shared by many* and *owned by none*.
 | A **shared resource pool** (channels, tokens) | **Service** | central state, allocated to many; `[ServiceRequest]` |
 | A **comms relay** fanning messages out | **Service** | many-to-many broadcast — `[ServiceEvent]` |
 | A **reaction wheel** on a satellite | **Model**, contained by ADCS | a physical part of one subsystem |
+| An **"eclipse started"** notice many subsystems react to | **Global event** | broadcast with no owner and no shared state |
 
 The environment/blackboard case is the clearest service: it's the *shared world state* every subsystem reads. Making it
 a model would mean picking one subsystem to "own the universe" and forcing all the others to reach into it — exactly the
@@ -115,7 +120,7 @@ smell the table flags.
 | An entity owned by one subtree but read by a specific peer elsewhere | **Model** + `[CrossReference<T>]` link |
 | A capability many unrelated models depend on | **Service** |
 | Shared world/environment state everyone samples | **Service** (blackboard) |
-| Broadcast "something changed" to subscribers | **Service** with `[ServiceEvent]` |
+| Broadcast "something changed" to subscribers | **Service** with `[ServiceEvent]` if the service owns the change, else a [global event](#/guide/events) |
 | A shared resource to allocate on request | **Service** with `[ServiceRequest]` |
 
 Related reading: [services](#/guide/services) (the mechanics), [associations](#/guide/associations) (`Container<T>` /
