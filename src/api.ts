@@ -21,9 +21,9 @@ export interface DocMember {
 }
 
 export interface TypeNode {
-  full: string;         // namespace.TypeName (generic arity stripped)
+  full: string;         // namespace.TypeName, generic arity kept (Foo`1), so Foo and Foo<T> stay distinct
   ns: string;
-  name: string;         // simple type name
+  name: string;         // display name, generic parameters spelled out (Foo<T>)
   kind: TypeKind;
   summaryHtml?: string;
   remarksHtml?: string;
@@ -130,14 +130,13 @@ export function crefLink(cref: string): { text: string; route: string | null } {
   const prefix = cref[1] === ":" ? cref[0] : "";
   const body = cref.includes(":") ? cref.slice(cref.indexOf(":") + 1) : cref;
   if (prefix === "T") {
-    const full = body.replace(/`\d+$/, "");
-    return { text: full.split(".").pop()!, route: `#/api/type/${encodeURIComponent(full)}` };
+    return { text: body.split(".").pop()!.replace(/`\d+$/, ""), route: `#/api/type/${encodeURIComponent(body)}` };
   }
   if (prefix === "M" || prefix === "P" || prefix === "F" || prefix === "E") {
     const noSig = body.replace(/\(.*\)$/, "");
     const parts = noSig.split(".");
     const member = parts.pop()!;
-    const typeFull = parts.join(".").replace(/`\d+$/, "");
+    const typeFull = parts.join(".");
     return { text: member.replace(/`+\d+$/, ""), route: `#/api/type/${encodeURIComponent(typeFull)}` };
   }
   return { text: body.split(".").pop() || body, route: null };
@@ -158,10 +157,17 @@ export function parseAssemblyXml(xmlText: string, assembly: string): { types: Ma
   for (const m of members) {
     const id = m.getAttribute("name") || "";
     if (id[0] !== "T") continue;
-    const full = id.slice(2).replace(/`\d+$/, "");
+    const full = id.slice(2);
     const ns = full.includes(".") ? full.slice(0, full.lastIndexOf(".")) : "";
+    // Foo`2 → Foo<TKey, TValue>, from the type's own <typeparam> docs; T1..Tn when they are missing.
+    const last = full.split(".").pop()!;
+    const arity = Number(last.match(/`(\d+)$/)?.[1] ?? 0);
+    const tps = Array.from(m.getElementsByTagName("typeparam")).map((p) => p.getAttribute("name") || "");
+    const name = arity
+      ? `${last.replace(/`\d+$/, "")}<${Array.from({ length: arity }, (_, i) => tps[i] || `T${i + 1}`).join(", ")}>`
+      : last;
     types.set(full, {
-      full, ns, name: full.split(".").pop()!, kind: "type",
+      full, ns, name, kind: "type",
       summaryHtml: getSummary(m), remarksHtml: childHtml(m, "remarks"),
       assembly, members: [],
     });
@@ -182,7 +188,7 @@ export function parseAssemblyXml(xmlText: string, assembly: string): { types: Ma
     }
     let memberName: string;
     if (declFull) memberName = noSig.slice(declFull.length + 1);
-    else { const i = noSig.lastIndexOf("."); declFull = noSig.slice(0, i).replace(/`\d+$/, ""); memberName = noSig.slice(i + 1); }
+    else { const i = noSig.lastIndexOf("."); declFull = noSig.slice(0, i); memberName = noSig.slice(i + 1); }
     memberName = memberName.replace(/#ctor/, declFull.split(".").pop()!).replace(/`+\d+/, "").replace(/#/g, ".");
 
     // params from the signature
@@ -236,11 +242,19 @@ export async function loadApiModel(base = "./api"): Promise<ApiModel> {
     const { types } = parseAssemblyXml(xml, a.name);
     for (const [full, t] of types) if (!all.has(full)) all.set(full, t);
   }
-  // Fold nested types (whose "namespace" is itself a known type) under the enclosing type's namespace,
-  // qualifying the display name — e.g. Outer.Inner → ns of Outer, name "Outer.Inner".
+  // Fold nested types under the namespace of their outermost documented enclosing type, qualifying the display
+  // name — e.g. Outer.Inner and Outer.Mid.Inner both land in Outer's namespace. The direct parent may itself be
+  // undocumented (absent from the XML), so the walk looks at every prefix, not just the immediate one; without
+  // that, the parent's full name would show up as a namespace of its own.
+  const known = new Set(all.keys());
   for (const t of all.values()) {
-    const parent = all.get(t.ns);
-    if (parent) { t.name = `${parent.name}.${t.name}`; t.ns = parent.ns; }
+    const segs = t.full.split(".");
+    for (let i = 1; i < segs.length - 1; i++) {
+      if (!known.has(segs.slice(0, i + 1).join("."))) continue;
+      t.ns = segs.slice(0, i).join(".");
+      t.name = [...segs.slice(i, -1).map((s) => s.replace(/`\d+$/, "")), t.name].join(".");
+      break;
+    }
   }
   const nsMap = new Map<string, TypeNode[]>();
   for (const t of all.values()) { (nsMap.get(t.ns) ?? nsMap.set(t.ns, []).get(t.ns)!).push(t); }
