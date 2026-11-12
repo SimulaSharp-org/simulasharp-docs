@@ -1,0 +1,54 @@
+# Publishes the docs site to GitHub Pages (simulasharp.net) on every merge into main.
+# One-time repo setting: Settings > Pages > Source = "GitHub Actions".
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never run two deploys at once, and never cancel one halfway through.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write      # publish to GitHub Pages
+  id-token: write   # prove the deployment comes from this workflow
+
+jobs:
+  build:
+    # A manual run from any other branch must not publish.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # public/CNAME is copied into dist/, so every deploy keeps the custom domain.
+      - run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
