@@ -1,3 +1,5 @@
+<img src="public/logo.svg" alt="SimulaSharp logo" width="96" align="right" />
+
 # SimulaSharp — Documentation
 
 A **Vite + React + TypeScript** documentation app: the definitive guide to **designing simulators** with

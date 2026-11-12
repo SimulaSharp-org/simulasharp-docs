@@ -8,7 +8,8 @@ a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:under
 code { font-family:ui-monospace,Consolas,monospace; background:#11141a; padding:.05rem .3rem; border-radius:4px; font-size:.9em; }
 .wrap { display:grid; grid-template-columns:270px 1fr; height:100%; }
 .side { border-right:1px solid var(--border); background:var(--panel); padding:.7rem; overflow:auto; }
-.brand { font-weight:600; margin:.2rem .3rem .8rem; } .brand b { color:var(--accent); }
+.brand { font-weight:600; font-size:1.25rem; margin:.3rem .3rem 1rem; display:flex; align-items:center; gap:.55rem; } .brand b { color:var(--accent); }
+.brand img { width:40px; height:40px; }
 .side .sidehdr { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:1rem .3rem .2rem; }
 .wsub { font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:.6rem .3rem .15rem; }
 .search { width:100%; max-width:520px; background:#11141a; color:var(--fg); border:1px solid var(--border); border-radius:7px; padding:.5rem .7rem; font:inherit; margin:.3rem 0 .8rem; }
@@ -20,8 +21,7 @@ h4 { margin:.6rem 0 .3rem; }
 .main { overflow:auto; padding:1.2rem 1.6rem 3rem; }
 .md :is(p,ul,ol) { margin:.5rem 0; }
 .md pre { background:#11141a; border:1px solid var(--border); border-radius:7px; padding:.6rem .8rem; overflow:auto; }
-.md pre code.hljs { background:transparent; padding:0; }
-.md h3 { font-size:.95rem; margin:1rem 0 .4rem; }
+.md pre code.hljs { background:transparent; padding:0; }.md h3 { font-size:.95rem; margin:1rem 0 .4rem; }
 .md blockquote { border-left:3px solid var(--accent); margin:.6rem 0; padding:.2rem .9rem; color:#c5ccd8; background:var(--panel); border-radius:0 7px 7px 0; }
 .mermaid { background:var(--panel); border:1px solid var(--border); border-radius:9px; padding:.8rem; margin:.6rem 0; text-align:center; overflow:auto; }
 .empty { color:var(--muted); padding:2rem 0; } .dim { color:var(--muted); font-size:.8rem; padding:.4rem .45rem; }

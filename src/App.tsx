@@ -66,7 +66,7 @@ function Sidebar() {
   const inApi = loc.pathname.startsWith("/api");
   return (
     <nav className="side">
-      <div className="brand">SimulaSharp <b>Docs</b></div>
+      <div className="brand"><img src="./logo.svg" alt="" /><span>SimulaSharp <b>Docs</b></span></div>
       <NavLink to="/" end className={navcls}>Home</NavLink>
       <h3 className="sidehdr">Guide</h3>
       <GuideNav sections={sections} />
