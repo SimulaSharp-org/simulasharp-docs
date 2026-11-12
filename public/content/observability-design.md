@@ -12,8 +12,8 @@ MMI has on your simulation. Design it deliberately.
 | Purpose | observe **and** control | telemetry to **graph** |
 | Direction | read, or read/write, or trigger | read-only, numeric |
 | Delivery | push-on-change + read on demand | pulled by the consumer, one stamp per sweep |
-| Shape | rich per-item metadata (labels, ranges, widgets) | a single `double` sample |
-| Binds to | indicators, inputs, sliders, buttons | strip charts |
+| Shape | rich per-item metadata (labels, ranges, options) | a single `double` sample |
+| Binds to | indicators, inputs, sliders, dropdowns, buttons | strip charts |
 
 They're different shapes on purpose. A knob is for a *control panel*; a plottable is for a *chart*. A value can be
 **both** — a read-only knob for the current reading *and* a plottable for its history — sharing one backing field. Pick
@@ -44,10 +44,12 @@ flowchart TD
 | Show a number the model computes | read-only `[NumberKnob<T>]` | `IsReadOnly = true` (or no setter) |
 | Show an on/off state | read-only `[TickBoxKnob]` | renders as an indicator lamp |
 | Show a status string | read-only `[TextKnob]` | renders as a label |
-| Let the operator set a number | read/write `[NumberKnob<T>]` | give `Min`/`Max`; pick `Input`/`Slider`/`Rotary` |
+| Show a mode or state from a fixed set | read-only `[EnumKnob]` on an enum property | indicator of the current member |
+| Let the operator set a number | read/write `[NumberKnob<T>]` | give `Min`/`Max`; `KnobType` hint not yet passed on in 0.5.3 |
 | Let the operator toggle something | read/write `[TickBoxKnob]` | a switch |
+| Let the operator pick one of a fixed set | read/write `[EnumKnob]` on an enum property | a dropdown of the enum's members |
 | Let the operator type a value | read/write `[TextKnob]` | `MaxLength`, `AllowEmpty`, `AllowNewLine` |
-| Give the operator a button | `[TriggerKnob]` on `Handle_<Name>()` | runs on the model's site thread |
+| Give the operator a button | `[TriggerKnob]` on `Handle_<Name>()` | runs on the owner's thread (model or service) |
 | Graph a numeric series | `[Plottable]` | numeric/`bool`/`enum` → `double` |
 | Watch **and** graph a value | read-only knob **+** `[Plottable]` on one property | one backing field, both roles |
 | Fix a parameter at build time | `[Parameter]` | not observability — set in the [assembly](#/guide/the-assembly) |
@@ -62,7 +64,8 @@ the intent per value.
 The `IsReadOnly` flag (and whether the property has a setter) decides ownership of the value:
 
 - **Read-only** — the *model* drives it; the operator only watches. Use for everything derived or measured: a state of
-  charge, a temperature, a mode. A read-only `TickBox` becomes an indicator; a read-only `Text` a label.
+  charge, a temperature, a mode. A read-only `TickBox` becomes an indicator; a read-only `Text` a label; a read-only
+  `Enum` an indicator of the current member.
 - **Read/write** — *both* the model and the operator can change it. Use only for genuine *inputs*: a setpoint, an enable
   switch, a commanded load.
 
@@ -73,8 +76,9 @@ The `IsReadOnly` flag (and whether the property has a setter) decides ownership 
 
 ## Triggers run on your thread — lean on that
 
-A `[TriggerKnob]` marks a parameterless `Handle_<Name>()` method. When the operator presses the button, the generated
-wrapper is **posted onto the model's own site thread** — so inside the handler you touch model state directly, no lock:
+A `[TriggerKnob]` marks a parameterless `void Handle_<Name>()` method (without the `Handle_` prefix it is ignored). When
+the operator presses the button, the generated wrapper is **posted onto the owner's own thread** — a model's
+`Scheduler`, a service's `Site` — so inside the handler you touch state directly, no lock:
 
 ```csharp
 [TriggerKnob("Recharge")]
@@ -82,7 +86,7 @@ protected void Handle_Recharge()
 {
     // Runs on THIS model's site thread — safe to mutate state.
     _chargeAh = CapacityAh;
-    Logger.Info("recharged");
+    Logger.LogInformation("recharged");
 }
 ```
 
@@ -92,9 +96,11 @@ Use triggers for *commands* — reset, arm, jettison, inject-fault — not for s
 
 Every knob and plottable is discovered under a **full dotted instance path** the simulator stamps at
 [construction](#/guide/observability): `Plant.Plant1.UnitA.Setpoint`. You control the last segment (the member) and
-the human **label** (the attribute's first argument); the path prefix comes from the assembly's instance names. So:
+the human **label** (the attribute's first argument); the path prefix comes from the simulator name and the assembly's
+instance names. So:
 
-- **Name instances well in the assembly** — the path an operator sees is `Site → Model names → member`. Meaningful
+- **Name instances well in the assembly** — the path an operator sees is `SimName → model names → member` (for a
+  service, `SimName → service name → member`). Site and container names are not part of it, so meaningful
   `Name:` values pay off here.
 - **Give every knob/plottable a clear `Label`** — it's what the widget shows. `[NumberKnob<double>("Bus voltage")]`, not
   `[NumberKnob<double>("Vbus")]`, unless the audience speaks the jargon.
@@ -103,7 +109,8 @@ the human **label** (the attribute's first argument); the path prefix comes from
 
 ## Don't over-expose
 
-The temptation is to slap `[Plottable]` on every field and `[Knob]` on every property "just in case." Resist it.
+The temptation is to slap `[Plottable]` on every field and a knob attribute on every property "just in case." Resist
+it.
 
 > **Consequence for design.** Every knob and plottable is a **stable, public contract** — discovered once at
 > construction and fixed for the life of the simulator, bound to by a UI you may not control. Each one is also a small
@@ -141,7 +148,7 @@ API. Design the panel you'd want to operate, then expose exactly that.
 | You want to… | Do this |
 |---|---|
 | Let an operator watch a value | read-only knob (add `[Plottable]` to graph it too) |
-| Let an operator change an input | read/write knob with sensible `Min`/`Max` |
+| Let an operator change an input | read/write knob with sensible `Min`/`Max` (or an `[EnumKnob]` for a fixed set) |
 | Give an operator a command button | `[TriggerKnob]` on a `Handle_<Name>()` method |
 | Graph a numeric series | `[Plottable]` with a `Unit` |
 | Fix a parameter at build | `[Parameter]`, in the [assembly](#/guide/the-assembly) — not a knob |
