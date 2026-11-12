@@ -236,11 +236,19 @@ export async function loadApiModel(base = "./api"): Promise<ApiModel> {
     const { types } = parseAssemblyXml(xml, a.name);
     for (const [full, t] of types) if (!all.has(full)) all.set(full, t);
   }
-  // Fold nested types (whose "namespace" is itself a known type) under the enclosing type's namespace,
-  // qualifying the display name — e.g. Outer.Inner → ns of Outer, name "Outer.Inner".
+  // Fold nested types under the namespace of their outermost documented enclosing type, qualifying the display
+  // name — e.g. Outer.Inner and Outer.Mid.Inner both land in Outer's namespace. The direct parent may itself be
+  // undocumented (absent from the XML), so the walk looks at every prefix, not just the immediate one; without
+  // that, the parent's full name would show up as a namespace of its own.
+  const known = new Set(all.keys());
   for (const t of all.values()) {
-    const parent = all.get(t.ns);
-    if (parent) { t.name = `${parent.name}.${t.name}`; t.ns = parent.ns; }
+    const segs = t.full.split(".");
+    for (let i = 1; i < segs.length - 1; i++) {
+      if (!known.has(segs.slice(0, i + 1).join("."))) continue;
+      t.ns = segs.slice(0, i).join(".");
+      t.name = segs.slice(i).join(".");
+      break;
+    }
   }
   const nsMap = new Map<string, TypeNode[]>();
   for (const t of all.values()) { (nsMap.get(t.ns) ?? nsMap.set(t.ns, []).get(t.ns)!).push(t); }
