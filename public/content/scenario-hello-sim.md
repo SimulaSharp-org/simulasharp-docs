@@ -19,9 +19,10 @@ graph TD
 
 ## The model
 
-A model with **no** generated members needs no `partial` and can be `sealed`. It derives
-[`ModelBase`](#/api/type/SimulaSharp.Kernel.Model.ModelBase), takes the three injected
-dependencies, and arms its work in [`Configure()`](#/guide/models-and-containment).
+Every model is `partial` — even one with no knobs or parameters, because the generator always adds
+a (here empty) parameter hook to it; a non-`partial` model is a build error (`SIM029`). It may still
+be `sealed`. It derives [`ModelBase`](#/api/type/SimulaSharp.Kernel.Model.ModelBase), takes the
+three injected dependencies, and arms its work in [`Configure()`](#/guide/models-and-containment).
 
 ```csharp
 using SimulaSharp.Kernel.Logging;
@@ -39,7 +40,7 @@ public sealed partial class Heartbeat(IClock c, IScheduler s, ILogger l) : Model
 
     // A scheduled action gets NO Δt argument. When it needs "now", it reads the clock.
     private void Tick()
-        => Logger.Info($"tick @ {TimeKeeper.SimNowUs} us");
+        => Logger.LogInformation($"tick @ {TimeKeeper.SimNowUs} us");
 }
 ```
 
@@ -82,29 +83,49 @@ suffix is just a convention).
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="SimulaSharp" Version="0.4.0" />
+    <PackageReference Include="SimulaSharp" Version="0.5.3" />
   </ItemGroup>
 </Project>
 ```
 
 > The one `SimulaSharp` meta-package brings the Kernel runtime and the CodeGen analyzer (with its `<SimAssembly>`
 > support) automatically. You need a NuGet source that has the packages — see [Project setup](#/guide/project-setup).
+> For a quick throwaway run, add `<OutputType>Exe</OutputType>` and put the host code below in `Program.cs`.
 
 ## Running it
 
 The generated `HelloSimulator` is an [`ISimulator`](#/api/type/SimulaSharp.Kernel.Services.ISimulator)
 with a parameterless constructor. From a test or a throwaway host, walk the
-[lifecycle](#/guide/simulator-lifecycle) and drive the [clock](#/guide/time-and-clock) for a bounded run:
+[lifecycle](#/guide/simulator-lifecycle) and make a bounded run with `RunFor` (see
+[time & the clock](#/guide/time-and-clock)). Log entries go only to registered sinks, so register
+an [`ILogSink`](#/api/type/SimulaSharp.Kernel.Logging.ILogSink) first, or the ticks are dropped:
 
 ```csharp
-using var sim = new HelloSimulator();
+using Hello;
+using SimulaSharp.Kernel.Logging;
+
+using var sim = new HelloSimulator();   // assembles the topology
+sim.RegisterLogSink(new ConsoleSink()); // route every component's log to the console
 
 sim.Configure();                // run each model's Configure() — arms the tick
 sim.Start();                    // bring the sites + clock up
 
-sim.Clock.RunFor(3_000_000);    // ~3 s of real time → ~3 ticks, then auto-pause (blocks caller)
+sim.RunFor(3_000_000);          // ~3 s of real time → ~3 ticks, then auto-pause (blocks caller)
 
 // leaving the `using` block Disposes the simulator — it is single-use.
+
+sealed class ConsoleSink : ILogSink
+{
+    public void Submit(in LogEntry e) => Console.WriteLine($"[{e.Issuer}] {e.Message}");
+}
+```
+
+The issuer is the model's dotted instance path, so the output reads:
+
+```text
+[Hello.Beat] tick @ 1001650 us
+[Hello.Beat] tick @ 2000053 us
+[Hello.Beat] tick @ 3000012 us
 ```
 
 ```mermaid
@@ -113,12 +134,13 @@ sequenceDiagram
   participant Sim as HelloSimulator
   participant M as Heartbeat (Main site)
   H->>Sim: new HelloSimulator()  (assembles)
+  H->>Sim: RegisterLogSink(console)
   H->>Sim: Configure()
   Sim->>M: Configure() → AddPeriodicEvent(Tick, 1 s)
   H->>Sim: Start() (sites + clock)
-  H->>Sim: Clock.RunFor(3 s)  (blocks ~3 s)
+  H->>Sim: RunFor(3 s)  (blocks ~3 s)
   loop every 1 s
-    M->>M: Tick() → Logger.Info("tick @ …")
+    M->>M: Tick() → Logger.LogInformation("tick @ …")
   end
   Sim-->>H: horizon hits 3 s → auto-pause → unblock
   H->>Sim: Dispose()
